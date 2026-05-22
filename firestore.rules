@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny catch-all safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Hardened Helper Functions ---
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Entity Validation Guards ---
+
+    function isValidClassroom(data) {
+      return data.keys().hasAll(['activeActivityId', 'debateText', 'feedback', 'feedbackGauges'])
+        && data.activeActivityId is string
+        && data.debateText is string
+        && data.debateText.size() <= 2000
+        && data.feedback is map
+        && data.feedbackGauges is map;
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['id', 'name', 'isSpeaking', 'active', 'avatarColor'])
+        && data.id is string
+        && data.name is string
+        && data.name.size() <= 100
+        && data.isSpeaking is bool
+        && data.active is bool
+        && data.avatarColor is string;
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['id', 'sender', 'text', 'timestamp'])
+        && data.id is string
+        && data.sender is string
+        && data.sender.size() <= 100
+        && data.text is string
+        && data.text.size() <= 1000
+        && data.timestamp is string;
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['id', 'courseCode', 'title', 'description'])
+        && data.id is string
+        && data.courseCode is string
+        && data.title is string
+        && data.title.size() <= 200
+        && data.description is string;
+    }
+
+    // --- Rules Match Routes ---
+
+    // 1. LIVE CLASSROOM STATE
+    match /classroom/{classroomId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(classroomId) && isValidClassroom(incoming());
+      allow update: if isSignedIn() && isValidId(classroomId) && isValidClassroom(incoming());
+      allow delete: if false;
+
+      // Class Student Roster
+      match /students/{studentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(studentId) && isValidStudent(incoming());
+        allow update: if isSignedIn() && isValidId(studentId) && isValidStudent(incoming());
+        allow delete: if false;
+      }
+
+      // Class Chat Feed
+      match /chat/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(messageId) && isValidChatMessage(incoming());
+        allow update: if false; // Chat messages are immutable
+        allow delete: if false;
+      }
+    }
+
+    // 2. COURSES / CURRICULA
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(courseId) && isValidCourse(incoming());
+      allow update: if isSignedIn() && isValidId(courseId) && isValidCourse(incoming());
+      allow delete: if isSignedIn(); // Allow deletion of custom designed courses
+    }
+
+  }
+}

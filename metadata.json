@@ -1,0 +1,6 @@
+{
+  "name": "Active Learning Forum",
+  "description": "Interactive simulator and companion suite for Artemis's Active Learning Forum, incorporating the real-time Seminar, Course Builder, and Degree Planner.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

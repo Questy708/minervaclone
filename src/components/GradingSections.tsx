@@ -17,6 +17,7 @@ import {
   User,
   RotateCcw,
   Plus,
+  Download,
 } from "lucide-react";
 
 interface GradingSectionsProps {
@@ -388,9 +389,64 @@ export default function GradingSections({
   const [activeTab, setActiveTab] = useState<
     "sections" | "backup" | "assisting"
   >("sections");
+  const [selectedAssignmentIds, setSelectedAssignmentIds] = useState<string[]>([]);
   const [studentProfilesData, setStudentProfilesData] = useState<
     Record<string, StudentDetailedProfile>
   >(INITIAL_STUDENT_PROFILES);
+
+  const handleExportCSV = () => {
+    // Collect all assignments in student progress to determine dynamic columns
+    const allAssignmentKeysSet = new Set<string>();
+    (Object.values(studentProfilesData) as StudentDetailedProfile[]).forEach(profile => {
+      profile.progress.forEach(p => {
+        allAssignmentKeysSet.add(p.assignment);
+      });
+    });
+    const allAssignmentKeys = Array.from(allAssignmentKeysSet).sort();
+
+    // Create CSV rows
+    const headers = [
+      "Student Name",
+      "Assessments Given",
+      "Attendance Rate",
+      "24 Hr Extensions",
+      "Average Score Scale (1-5)",
+      "Projected Letter Grade",
+      ...allAssignmentKeys
+    ];
+
+    const csvRows = [headers.join(",")];
+
+    performanceData.forEach(row => {
+      const profile = studentProfilesData[row.name];
+      const scores = allAssignmentKeys.map(key => {
+        const item = profile?.progress.find(p => p.assignment === key);
+        return item ? item.score : "";
+      });
+
+      const studentData = [
+        `"${row.name}"`,
+        row.assessmentsGiven,
+        `"${row.attendance}"`,
+        row.extensions,
+        row.avgScore,
+        `"${row.projected}"`,
+        ...scores
+      ];
+      csvRows.push(studentData.join(","));
+    });
+
+    // Create blob & initiate download file dialogue
+    const csvContent = csvRows.join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Artemis_Student_Performance_and_Grades_${selectedCourse.split(':')[0].replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   const [selectedCourse, setSelectedCourse] = useState(
     "AH 110: Global History (Freeman, TTh@13:00 Seoul)",
   );
@@ -1188,10 +1244,139 @@ export default function GradingSections({
             </div>
           </div>
 
+          {/* Bulk operation selections and actions drawer */}
+          {selectedAssignmentIds.length > 0 && (
+            <div className="bg-indigo-50 border-b border-indigo-150 px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 animate-fade-in shadow-xs">
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-mono font-bold text-indigo-950 bg-indigo-100 px-2.5 py-0.5 rounded-full">
+                  {selectedAssignmentIds.length} Selected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAssignmentIds([])}
+                  className="text-[10px] text-[#1E3A8A] hover:text-[#0f172a] hover:underline font-mono cursor-pointer font-bold"
+                >
+                  Clear Selection
+                </button>
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-[10px] uppercase font-mono tracking-wider font-extrabold text-slate-500">Bulk Actions:</span>
+                
+                {/* Change Status */}
+                <div className="flex items-center space-x-1 border border-indigo-200 bg-white px-2 py-1 rounded-lg">
+                  <span className="text-[9.5px] font-mono text-slate-500 pl-1">Status:</span>
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      setAssignments(prev => prev.map(a => {
+                        if (selectedAssignmentIds.includes(a.id)) {
+                          if (val === 'all') {
+                            return { ...a, status: 'all', action: 'View Grades', submitted: '17/17' };
+                          } else if (val === 'partial') {
+                            return { ...a, status: 'partial', action: 'Grade', submitted: '14/17' };
+                          } else {
+                            return { ...a, status: 'none', action: '', submitted: 'n/a' };
+                          }
+                        }
+                        return a;
+                      }));
+                      e.target.value = ''; // Reset option
+                    }}
+                    className="bg-transparent border-0 focus:ring-0 text-[10.5px] font-bold font-sans text-slate-700 py-0.5 cursor-pointer max-w-[120px]"
+                  >
+                    <option value="">-- Choose Status --</option>
+                    <option value="all">Completed (17/17)</option>
+                    <option value="partial">Partial (14/17)</option>
+                    <option value="none">Pending (n/a)</option>
+                  </select>
+                </div>
+
+                {/* Change Weight */}
+                <div className="flex items-center space-x-1 border border-indigo-200 bg-white px-2 py-1 rounded-lg">
+                  <span className="text-[9.5px] font-mono text-slate-500 pl-1">Weight:</span>
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      setAssignments(prev => prev.map(a => {
+                        if (selectedAssignmentIds.includes(a.id)) {
+                          return { ...a, weight: val };
+                        }
+                        return a;
+                      }));
+                      e.target.value = ''; // Reset option
+                    }}
+                    className="bg-transparent border-0 focus:ring-0 text-[10.5px] font-bold font-sans text-slate-700 py-0.5 cursor-pointer"
+                  >
+                    <option value="">-- Choose Weight --</option>
+                    <option value="x1">x1</option>
+                    <option value="x2">x2</option>
+                    <option value="x3">x3</option>
+                    <option value="x4">x4</option>
+                    <option value="x5">x5</option>
+                    <option value="x10">x10</option>
+                    <option value="x11">x11</option>
+                  </select>
+                </div>
+
+                {/* Set Grade By Date */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const dateStr = prompt("Enter a new Grade By date (e.g. 'Oct 26', 'Dec 20', 'Jan 15'):");
+                    if (dateStr) {
+                      setAssignments(prev => prev.map(a => {
+                        if (selectedAssignmentIds.includes(a.id)) {
+                          return { ...a, gradeBy: dateStr };
+                        }
+                        return a;
+                      }));
+                    }
+                  }}
+                  className="px-2.5 h-8 text-[11px] font-sans font-bold bg-white text-slate-700 hover:bg-slate-50 border border-slate-250 hover:border-slate-350 rounded-lg shadow-sm transition cursor-pointer"
+                >
+                  Grade By Date
+                </button>
+
+                {/* Delete selected */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(`Are you sure you want to delete ${selectedAssignmentIds.length} assignment(s)?`)) {
+                      setAssignments(prev => prev.filter(a => !selectedAssignmentIds.includes(a.id)));
+                      setSelectedAssignmentIds([]);
+                    }
+                  }}
+                  className="px-2.5 h-8 text-[11px] font-sans font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition rounded-lg shadow-sm cursor-pointer"
+                >
+                  Delete Selected
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto select-none">
             <table className="w-full text-left text-xs text-slate-600">
               <thead className="bg-[#FAFBFD] border-b border-slate-200 text-[10.5px] uppercase font-mono text-slate-400 font-bold">
                 <tr>
+                  <th scope="col" className="px-4 py-3 text-center w-12">
+                    <input
+                      type="checkbox"
+                      checked={filteredAssignments.length > 0 && filteredAssignments.every(a => selectedAssignmentIds.includes(a.id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          const allFilteredIds = filteredAssignments.map(a => a.id);
+                          setSelectedAssignmentIds(prev => Array.from(new Set([...prev, ...allFilteredIds])));
+                        } else {
+                          const allFilteredIds = filteredAssignments.map(a => a.id);
+                          setSelectedAssignmentIds(prev => prev.filter(id => !allFilteredIds.includes(id)));
+                        }
+                      }}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer ml-1"
+                    />
+                  </th>
                   <th
                     scope="col"
                     className="px-6 py-3 font-semibold justify-start text-left"
@@ -1227,11 +1412,26 @@ export default function GradingSections({
 
               <tbody className="divide-y divide-slate-150">
                 {filteredAssignments.map((asgn) => {
+                  const isChecked = selectedAssignmentIds.includes(asgn.id);
                   return (
                     <tr
                       key={asgn.id}
-                      className="hover:bg-slate-50 transition duration-100"
+                      className={`hover:bg-slate-50 transition duration-100 ${isChecked ? 'bg-indigo-50/40 text-indigo-950 font-bold' : ''}`}
                     >
+                      <td className="px-4 py-3.5 text-center w-12">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedAssignmentIds(prev => [...prev, asgn.id]);
+                            } else {
+                              setSelectedAssignmentIds(prev => prev.filter(id => id !== asgn.id));
+                            }
+                          }}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer ml-1"
+                        />
+                      </td>
                       <td className="px-6 py-3.5 font-sans text-xs">
                         <div className="font-medium text-[#1E3A8A] hover:underline cursor-pointer">
                           {asgn.name}
@@ -1311,30 +1511,41 @@ export default function GradingSections({
               </p>
             </div>
 
-            {/* View sub-tab selectors */}
-            <div className="flex bg-slate-200 p-1 rounded-xl self-start sm:self-auto shadow-sm">
+            {/* View sub-tab selectors & Exports */}
+            <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
               <button
                 type="button"
-                onClick={() => setAnalyticsSubTab("table")}
-                className={`px-4.5 py-1.5 text-[10px] font-semibold font-mono tracking-wider rounded-lg transition-all duration-150 ${
-                  analyticsSubTab === "table"
-                    ? "bg-[#1E3A8A] text-white shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
-                }`}
+                onClick={handleExportCSV}
+                className="px-4 py-2 text-[10px] sm:text-[11px] font-semibold font-mono tracking-wider bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white rounded-xl transition-all duration-150 flex items-center gap-1.5 shadow-sm cursor-pointer"
               >
-                Roster Grid
+                <Download className="w-3.5 h-3.5 text-white" />
+                <span>Export Grades (CSV)</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setAnalyticsSubTab("visual")}
-                className={`px-4.5 py-1.5 text-[10px] font-semibold font-mono tracking-wider rounded-lg transition-all duration-150 ${
-                  analyticsSubTab === "visual"
-                    ? "bg-[#1E3A8A] text-white shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                Visual Diagnostics
-              </button>
+
+              <div className="flex bg-slate-200 p-1 rounded-xl shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setAnalyticsSubTab("table")}
+                  className={`px-4.5 py-1.5 text-[10px] font-semibold font-mono tracking-wider rounded-lg transition-all duration-150 ${
+                    analyticsSubTab === "table"
+                      ? "bg-[#1E3A8A] text-white shadow-xs"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Roster Grid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAnalyticsSubTab("visual")}
+                  className={`px-4.5 py-1.5 text-[10px] font-semibold font-mono tracking-wider rounded-lg transition-all duration-150 ${
+                    analyticsSubTab === "visual"
+                      ? "bg-[#1E3A8A] text-white shadow-xs"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Visual Diagnostics
+                </button>
+              </div>
             </div>
           </div>
 

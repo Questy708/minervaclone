@@ -12,8 +12,13 @@ import OutcomeIndex from './components/OutcomeIndex';
 import AbsencesTracker from './components/AbsencesTracker';
 import CoursesModule from './components/CoursesModule';
 import AiTutor from './components/AiTutor';
+import AutoTutor from './components/AutoTutor';
+import { Tv } from 'lucide-react';
 import AllEvents from './components/AllEvents';
 import DashboardHome from './components/DashboardHome';
+import AssignmentsModule from './components/AssignmentsModule';
+import ForumFeedModule from './components/ForumFeedModule';
+import { LearningCluster } from './types';
 
 import { 
   Presentation, 
@@ -42,7 +47,9 @@ import {
   UserCheck2,
   HelpCircle,
   Menu,
-  ChevronDown
+  ChevronDown,
+  Globe,
+  MessageSquare
 } from 'lucide-react';
 
 type AppTab = 
@@ -58,14 +65,18 @@ type AppTab =
   | 'reverse-engineering'
   | 'courses'
   | 'ai-tutor'
-  | 'all-events';
+  | 'auto-tutor'
+  | 'all-events'
+  | 'learner-portfolio'
+  | 'assignments'
+  | 'forum-feed';
 
 export type UserRole = 'faculty' | 'student' | 'researcher' | 'admin';
 
 export const ALLOWED_TABS_BY_ROLE: Record<UserRole, AppTab[]> = {
-  student: ['dashboard', 'courses', 'seminar-classroom', 'outcome-index', 'ai-tutor', 'all-events', 'grading-advisees'],
-  researcher: ['dashboard', 'courses', 'seminar-classroom', 'outcome-index', 'ai-tutor', 'all-events', 'users-directory', 'course-builder', 'reverse-engineering'],
-  faculty: ['dashboard', 'courses', 'seminar-classroom', 'outcome-index', 'ai-tutor', 'all-events', 'users-directory', 'course-builder', 'class-assessments', 'grading-sections', 'grading-advisees', 'grading-absences'],
+  student: ['dashboard', 'courses', 'seminar-classroom', 'outcome-index', 'ai-tutor', 'auto-tutor', 'all-events', 'grading-advisees', 'learner-portfolio', 'assignments', 'forum-feed'],
+  researcher: ['dashboard', 'courses', 'seminar-classroom', 'outcome-index', 'ai-tutor', 'auto-tutor', 'all-events', 'users-directory', 'course-builder', 'reverse-engineering', 'learner-portfolio', 'grading-advisees', 'assignments', 'forum-feed'],
+  faculty: ['dashboard', 'courses', 'seminar-classroom', 'outcome-index', 'ai-tutor', 'auto-tutor', 'all-events', 'users-directory', 'course-builder', 'class-assessments', 'grading-sections', 'grading-advisees', 'grading-absences', 'learner-portfolio', 'assignments', 'forum-feed'],
   admin: [
     'dashboard', 
     'courses', 
@@ -79,7 +90,11 @@ export const ALLOWED_TABS_BY_ROLE: Record<UserRole, AppTab[]> = {
     'grading-absences', 
     'reverse-engineering', 
     'ai-tutor', 
-    'all-events'
+    'auto-tutor',
+    'all-events',
+    'learner-portfolio',
+    'assignments',
+    'forum-feed'
   ]
 };
 
@@ -121,10 +136,29 @@ export const getPersonaByRole = (role: UserRole, userObj: User | null) => {
 };
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [bypassAuth, setBypassAuth] = useState(false);
-  const [userRole, setUserRole] = useState<UserRole>('faculty');
+  const [onboardingCompleted, setOnboardingCompleted] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('artemis_onboarding_completed') === 'true';
+    }
+    return false;
+  });
+  const [userRole, setUserRole] = useState<UserRole>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('artemis_role') as UserRole) || 'faculty';
+    }
+    return 'faculty';
+  });
+  const [userCluster, setUserCluster] = useState<LearningCluster>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('artemis_cluster') as LearningCluster) || 'university';
+    }
+    return 'university';
+  });
+  const [onboardingStep, setOnboardingStep] = useState<'role' | 'cluster'>('role');
+  const [tempCluster, setTempCluster] = useState<LearningCluster | null>(null);
 
   // Apple Intelligence Viewport Responsiveness controls (including high-zoom responsiveness)
   const [isMobile, setIsMobile] = useState(false);
@@ -143,11 +177,71 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Unified synchronizer for user object properties & local storage preferences
+  useEffect(() => {
+    if (user) {
+      const persona = getPersonaByRole(userRole, user);
+      setUser((prev: any) => {
+        if (!prev) return null;
+        if (prev.role === userRole && prev.cluster === userCluster) {
+          return prev;
+        }
+        return {
+          ...prev,
+          role: userRole,
+          cluster: userCluster,
+          displayName: prev.isBypass ? persona.name : prev.displayName,
+          email: prev.isBypass ? persona.email : prev.email,
+        };
+      });
+    }
+    localStorage.setItem('artemis_role', userRole);
+    localStorage.setItem('artemis_cluster', userCluster);
+  }, [userRole, userCluster]);
+
   useEffect(() => {
     const unsub = initAuth((currentUser) => {
-      setUser(currentUser);
+      const savedRole = (localStorage.getItem('artemis_role') as UserRole) || 'faculty';
+      const savedCluster = (localStorage.getItem('artemis_cluster') as LearningCluster) || 'university';
+      const isCompleted = localStorage.getItem('artemis_onboarding_completed') === 'true';
+
       if (currentUser) {
-        setUserRole('faculty');
+        setUser({
+          ...currentUser,
+          uid: currentUser.uid,
+          displayName: currentUser.displayName,
+          email: currentUser.email,
+          photoURL: currentUser.photoURL,
+          role: savedRole,
+          cluster: savedCluster,
+        });
+        setUserRole(savedRole);
+        setUserCluster(savedCluster);
+        setOnboardingCompleted(isCompleted);
+        if (isCompleted) {
+          setBypassAuth(true);
+        }
+      } else {
+        if (isCompleted) {
+          const persona = getPersonaByRole(savedRole, null);
+          setUser({
+            uid: 'local-bypass',
+            displayName: persona.name,
+            email: persona.email,
+            photoURL: null,
+            role: savedRole,
+            cluster: savedCluster,
+            isBypass: true
+          });
+          setUserRole(savedRole);
+          setUserCluster(savedCluster);
+          setOnboardingCompleted(true);
+          setBypassAuth(true);
+        } else {
+          setUser(null);
+          setOnboardingCompleted(false);
+          setBypassAuth(false);
+        }
       }
       setCheckingAuth(false);
     });
@@ -183,9 +277,31 @@ export default function App() {
     );
   }
 
-  if (!user && !bypassAuth) {
+  if (!onboardingCompleted && !bypassAuth) {
     const handleRoleSelect = (selected: UserRole) => {
       setUserRole(selected);
+      localStorage.setItem('artemis_role', selected);
+      setOnboardingStep('cluster');
+    };
+
+    const handleClusterSelect = (cluster: LearningCluster) => {
+      setUserCluster(cluster);
+      localStorage.setItem('artemis_cluster', cluster);
+      localStorage.setItem('artemis_onboarding_completed', 'true');
+      setOnboardingCompleted(true);
+      
+      const persona = getPersonaByRole(userRole, user);
+      const customUserObj = {
+        uid: user?.uid || 'local-bypass',
+        displayName: user?.displayName || persona.name,
+        email: user?.email || persona.email,
+        photoURL: user?.photoURL || null,
+        role: userRole,
+        cluster: cluster,
+        isBypass: !user,
+      };
+      
+      setUser(customUserObj as any);
       setBypassAuth(true);
     };
 
@@ -218,125 +334,266 @@ export default function App() {
             </p>
           </div>
 
-          {/* Simple Roles Grid Selector */}
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-mono text-slate-500 uppercase text-center tracking-widest font-extrabold">
-              Select Workspace Authorization Mode
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {onboardingStep === 'role' ? (
+            /* STEP 1: SELECT ROLE */
+            <div className="space-y-4">
+              <h3 className="text-[10px] font-mono text-slate-500 uppercase text-center tracking-widest font-extrabold">
+                Select Workspace Authorization Mode (Step 1 of 2)
+              </h3>
               
-              {/* Card 1: Faculty */}
-              <button
-                onClick={() => handleRoleSelect('faculty')}
-                className="bg-[#1C1E2B] border border-neutral-800 hover:border-[#EA580C] rounded-xl p-4 text-left transition duration-200 hover:shadow-lg group flex space-x-3.5 focus:outline-none focus:ring-1 focus:ring-[#EA580C] cursor-pointer"
-              >
-                <div className="p-2.5 bg-orange-650/10 border border-orange-550/20 text-[#EA580C] rounded-lg group-hover:bg-[#EA580C] group-hover:text-white transition duration-200 shrink-0 self-start">
-                  <CheckSquare className="w-4.5 h-4.5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-sans text-white group-hover:text-amber-500 transition">
-                    Tutors & Professors (Faculty)
-                  </h4>
-                  <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
-                    Syllabus creation blueprints, grading portfolios, active students index, and coach advice parameters.
-                  </p>
-                  <span className="text-[9px] font-mono text-[#EA580C] font-semibold block mt-2 uppercase tracking-wider">
-                    Persona: Prof James Freeman
-                  </span>
-                </div>
-              </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                {/* Card 1: Faculty */}
+                <button
+                  onClick={() => handleRoleSelect('faculty')}
+                  className="bg-[#1C1E2B] border border-neutral-800 hover:border-[#EA580C] rounded-xl p-4 text-left transition duration-200 hover:shadow-lg group flex space-x-3.5 focus:outline-none focus:ring-1 focus:ring-[#EA580C] cursor-pointer"
+                >
+                  <div className="p-2.5 bg-orange-650/10 border border-orange-555/20 text-[#EA580C] rounded-lg group-hover:bg-[#EA580C] group-hover:text-white transition duration-200 shrink-0 self-start">
+                    <CheckSquare className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold font-sans text-white group-hover:text-amber-500 transition">
+                      Tutors & Professors (Faculty)
+                    </h4>
+                    <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
+                      Syllabus creation blueprints, grading portfolios, active students index, and coach advice parameters.
+                    </p>
+                    <span className="text-[9px] font-mono text-[#EA580C] font-semibold block mt-2 uppercase tracking-wider">
+                      Persona: Prof James Freeman
+                    </span>
+                  </div>
+                </button>
 
-              {/* Card 2: Student */}
-              <button
-                onClick={() => handleRoleSelect('student')}
-                className="bg-[#1C1E2B] border border-neutral-800 hover:border-indigo-500 rounded-xl p-4 text-left transition duration-200 hover:shadow-lg group flex space-x-3.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-              >
-                <div className="p-2.5 bg-indigo-650/10 border border-indigo-550/20 text-indigo-400 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition duration-200 shrink-0 self-start">
-                  <GraduationCap className="w-4.5 h-4.5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-sans text-white group-hover:text-indigo-400 transition">
-                    Intelligent Scholar (Student)
-                  </h4>
-                  <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
-                    Track cornerstone HCs masteries, enter live seminar sessions, and review direct analytical grade plans.
-                  </p>
-                  <span className="text-[9px] font-mono text-indigo-400/80 font-bold block mt-2 uppercase tracking-wider">
-                    Persona: Marika Alvarez
-                  </span>
-                </div>
-              </button>
+                {/* Card 2: Student */}
+                <button
+                  onClick={() => handleRoleSelect('student')}
+                  className="bg-[#1C1E2B] border border-neutral-800 hover:border-indigo-500 rounded-xl p-4 text-left transition duration-200 hover:shadow-lg group flex space-x-3.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <div className="p-2.5 bg-indigo-650/10 border border-indigo-550/20 text-indigo-400 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition duration-200 shrink-0 self-start">
+                    <GraduationCap className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold font-sans text-white group-hover:text-indigo-400 transition">
+                      Intelligent Scholar (Student)
+                    </h4>
+                    <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
+                      Track cornerstone HCs masteries, enter live seminar sessions, and review direct analytical grade plans.
+                    </p>
+                    <span className="text-[9px] font-mono text-indigo-400/80 font-bold block mt-2 uppercase tracking-wider">
+                      Persona: Marika Alvarez
+                    </span>
+                  </div>
+                </button>
 
-              {/* Card 3: Researcher */}
-              <button
-                onClick={() => handleRoleSelect('researcher')}
-                className="bg-[#1C1E2B] border border-neutral-800 hover:border-[#10B981] rounded-xl p-4 text-left transition duration-200 hover:shadow-lg group flex space-x-3.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-              >
-                <div className="p-2.5 bg-emerald-650/10 border border-emerald-555/20 text-[#10B981] rounded-lg group-hover:bg-[#10B981] group-hover:text-white transition duration-200 shrink-0 self-start">
-                  <Brain className="w-4.5 h-4.5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-sans text-white group-hover:text-emerald-400 transition">
-                    Academic Analyst (Researcher)
-                  </h4>
-                  <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
-                    Formative assessments telemetry logs, curriculum outline maps, and users statistics.
-                  </p>
-                  <span className="text-[9px] font-mono text-emerald-400/85 font-bold block mt-2 uppercase tracking-wider">
-                    Persona: Dr Evelyn Sterling
-                  </span>
-                </div>
-              </button>
+                {/* Card 3: Researcher */}
+                <button
+                  onClick={() => handleRoleSelect('researcher')}
+                  className="bg-[#1C1E2B] border border-neutral-800 hover:border-[#10B981] rounded-xl p-4 text-left transition duration-200 hover:shadow-lg group flex space-x-3.5 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                >
+                  <div className="p-2.5 bg-emerald-650/10 border border-emerald-555/20 text-[#10B981] rounded-lg group-hover:bg-[#10B981] group-hover:text-white transition duration-200 shrink-0 self-start">
+                    <Brain className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold font-sans text-white group-hover:text-emerald-400 transition">
+                      Academic Analyst (Researcher)
+                    </h4>
+                    <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
+                      Formative assessments telemetry logs, curriculum outline maps, and users statistics.
+                    </p>
+                    <span className="text-[9px] font-mono text-emerald-400/85 font-bold block mt-2 uppercase tracking-wider">
+                      Persona: Dr Evelyn Sterling
+                    </span>
+                  </div>
+                </button>
 
-              {/* Card 4: Admin */}
-              <button
-                onClick={() => handleRoleSelect('admin')}
-                className="bg-[#1C1E2B] border border-neutral-800 hover:border-rose-500 rounded-xl p-4 text-left transition duration-200 hover:shadow-lg group flex space-x-3.5 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
-              >
-                <div className="p-2.5 bg-rose-650/10 border border-rose-555/20 text-[#F43F5E] rounded-lg group-hover:bg-[#F43F5E] group-hover:text-white transition duration-200 shrink-0 self-start">
-                  <Users className="w-4.5 h-4.5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold font-sans text-white group-hover:text-rose-400 transition">
-                    Super Administrator (Admin)
-                  </h4>
-                  <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
-                    Access all sub-panels, index academic terms, inspect schema registers, and control credentials.
-                  </p>
-                  <span className="text-[9px] font-mono text-rose-450/85 font-bold block mt-2 uppercase tracking-wider">
-                    Persona: Marcus Admin
-                  </span>
-                </div>
-              </button>
+                {/* Card 4: Admin */}
+                <button
+                  onClick={() => handleRoleSelect('admin')}
+                  className="bg-[#1C1E2B] border border-neutral-800 hover:border-rose-500 rounded-xl p-4 text-left transition duration-200 hover:shadow-lg group flex space-x-3.5 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
+                >
+                  <div className="p-2.5 bg-rose-650/10 border border-rose-555/20 text-[#F43F5E] rounded-lg group-hover:bg-[#F43F5E] group-hover:text-white transition duration-200 shrink-0 self-start">
+                    <Users className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold font-sans text-white group-hover:text-rose-400 transition">
+                      Super Administrator (Admin)
+                    </h4>
+                    <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
+                      Access all sub-panels, index academic terms, inspect schema registers, and curate the full course catalog.
+                    </p>
+                    <span className="text-[9px] font-mono text-rose-450/85 font-bold block mt-2 uppercase tracking-wider">
+                      Persona: Marcus Admin
+                    </span>
+                  </div>
+                </button>
+
+              </div>
+            </div>
+          ) : (
+            /* STEP 2: SELECT LEARNING CONTINUUM CLUSTER (VISUAL PICKER) */
+            <div className="space-y-6 animate-fade-in">
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                <button
+                  onClick={() => setOnboardingStep('role')}
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition font-bold uppercase font-mono cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Back to Step 1</span>
+                </button>
+                <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-widest font-extrabold bg-[#1C1E2B] px-2.5 py-0.5 rounded border border-neutral-800">
+                  Step 2 of 2
+                </span>
+              </div>
+              
+              <div className="space-y-2 text-center md:text-left">
+                <h3 className="text-xs font-mono text-[#EA580C] uppercase tracking-widest font-extrabold">
+                  Infinite Learning Continuum Profile Selection
+                </h3>
+                <p className="text-[11.5px] text-slate-400 leading-relaxed font-sans">
+                  Choose a division of lifelong academic coordination. Your dashboard layout, study milestones, and active search catalog criteria adjust dynamically to match your lifestage boundary.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                
+                {/* Cluster 1: K-12 */}
+                <button
+                  onClick={() => setTempCluster('k12')}
+                  className={`border rounded-xl p-5 text-left transition duration-200 flex space-x-4 cursor-pointer relative overflow-hidden ${
+                    tempCluster === 'k12' 
+                      ? 'bg-[#1C1E2B] border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500' 
+                      : 'bg-[#151722] border-neutral-800/80 hover:border-emerald-600/60'
+                  }`}
+                >
+                  <div className={`p-3 rounded-xl transition duration-205 shrink-0 self-start text-xl font-bold font-mono w-12 h-12 flex items-center justify-center ${
+                    tempCluster === 'k12' ? 'bg-emerald-600 text-white shadow-md' : 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/30'
+                  }`}>
+                    🎒
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-xs font-bold font-sans text-white group-hover:text-emerald-400 transition flex items-center gap-2">
+                      <span>Cluster 1: K-12 Division</span>
+                      <span className="bg-emerald-950/80 border border-emerald-800 text-emerald-400 text-[8.5px] font-mono px-1.5 rounded">Avenues Style</span>
+                    </h4>
+                    <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
+                      Playful gamified study timelines, companion guides, explorer adventure badges, and cardboard computational models.
+                    </p>
+                  </div>
+                  {tempCluster === 'k12' && (
+                    <div className="absolute right-4 top-4 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-[8px] text-black">
+                      ✓
+                    </div>
+                  )}
+                </button>
+
+                {/* Cluster 2: University */}
+                <button
+                  onClick={() => setTempCluster('university')}
+                  className={`border rounded-xl p-5 text-left transition duration-200 flex space-x-4 cursor-pointer relative overflow-hidden ${
+                    tempCluster === 'university' 
+                      ? 'bg-[#1C1E2B] border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.15)] ring-1 ring-indigo-500' 
+                      : 'bg-[#151722] border-neutral-800/80 hover:border-indigo-600/60'
+                  }`}
+                >
+                  <div className={`p-3 rounded-xl transition duration-205 shrink-0 self-start text-xl font-bold font-mono w-12 h-12 flex items-center justify-center ${
+                    tempCluster === 'university' ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-950/40 text-indigo-400 border border-indigo-900/30'
+                  }`}>
+                    🎓
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-xs font-bold font-sans text-white group-hover:text-indigo-400 transition flex items-center gap-2">
+                      <span>Cluster 2: Collegiate & Graduate Division</span>
+                      <span className="bg-indigo-950/80 border border-indigo-805 text-indigo-400 text-[8.5px] font-mono px-1.5 rounded font-bold">Yale Search Index</span>
+                    </h4>
+                    <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
+                      Core rigorous analytical academic courses, 1-5 Habits of Mind formative grade scales, transcript GPA blueprints, and diagnostic spotlights.
+                    </p>
+                  </div>
+                  {tempCluster === 'university' && (
+                    <div className="absolute right-4 top-4 w-4 h-4 rounded-full bg-indigo-500 flex items-center justify-center text-[8px] text-white">
+                      ✓
+                    </div>
+                  )}
+                </button>
+
+                {/* Cluster 3: Seniors */}
+                <button
+                  onClick={() => setTempCluster('seniors')}
+                  className={`border rounded-xl p-5 text-left transition duration-200 flex space-x-4 cursor-pointer relative overflow-hidden ${
+                    tempCluster === 'seniors' 
+                      ? 'bg-[#1C1E2B] border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.15)] ring-1 ring-orange-500' 
+                      : 'bg-[#151722] border-neutral-800/80 hover:border-orange-600/60'
+                  }`}
+                >
+                  <div className={`p-3 rounded-xl transition duration-205 shrink-0 self-start text-xl font-bold font-mono w-12 h-12 flex items-center justify-center ${
+                    tempCluster === 'seniors' ? 'bg-orange-600 text-white shadow-md' : 'bg-orange-950/40 text-orange-400 border border-orange-900/30'
+                  }`}>
+                    🌿
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-xs font-bold font-sans text-white group-hover:text-indigo-400 transition flex items-center gap-1.5">
+                      <span>Cluster 3: Seniors Active Mind Oasis</span>
+                      <span className="bg-orange-955 text-orange-400 border border-orange-900 text-[8px] font-mono px-1.5 rounded uppercase tracking-wider font-extrabold">Active</span>
+                    </h4>
+                    <p className="text-[10.5px] text-slate-400 leading-normal font-sans mt-1">
+                      Autobiographical memoirs transcription, classic symphonies orchestration auditory analysis circles, and friendly AI helper tutorials.
+                    </p>
+                  </div>
+                  {tempCluster === 'seniors' && (
+                    <div className="absolute right-4 top-4 w-4 h-4 rounded-full bg-orange-500 flex items-center justify-center text-[8px] text-white">
+                      ✓
+                    </div>
+                  )}
+                </button>
+
+              </div>
+
+              {/* Confirm CTA Button Box */}
+              <div className="pt-4 border-t border-neutral-900 flex justify-end">
+                <button
+                  disabled={!tempCluster}
+                  onClick={() => tempCluster && handleClusterSelect(tempCluster)}
+                  className={`px-6 h-11 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md ${
+                    tempCluster 
+                      ? 'bg-gradient-to-r from-orange-600 to-indigo-600 hover:opacity-90 text-white cursor-pointer hover:scale-[1.02] active:scale-[0.98]' 
+                      : 'bg-neutral-800 text-neutral-500 cursor-not-allowed border border-neutral-850/60'
+                  }`}
+                >
+                  <span>Confirm Selection & Launch Artemis</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
 
             </div>
-          </div>
+          )}
 
           {/* Social SSO block */}
-          <div className="space-y-4 border-t border-neutral-900 pt-7">
-            <div className="flex items-center justify-center gap-2">
-              <span className="h-[1px] w-20 bg-neutral-800"></span>
-              <span className="text-[9.5px] font-mono tracking-widest text-slate-500 uppercase font-extrabold">OR GOOGLE WORKSPACE SSO</span>
-              <span className="h-[1px] w-20 bg-neutral-800"></span>
-            </div>
+          {onboardingStep === 'role' && (
+            <div className="space-y-4 border-t border-neutral-900 pt-7">
+              <div className="flex items-center justify-center gap-2">
+                <span className="h-[1px] w-20 bg-neutral-800"></span>
+                <span className="text-[9.5px] font-mono tracking-widest text-slate-500 uppercase font-extrabold">OR INSTITUTIONAL SSO</span>
+                <span className="h-[1px] w-20 bg-neutral-800"></span>
+              </div>
 
-            <button
-              onClick={async () => {
-                try {
-                  await googleSignIn();
-                } catch (err) {
-                  console.error("Sign-in failed:", err);
-                }
-              }}
-              className="w-full h-11 bg-white hover:bg-slate-50 text-slate-800 rounded-xl font-bold flex items-center justify-center space-x-2.5 text-xs cursor-pointer shadow-sm transition"
-            >
-              <svg className="w-4 h-4 text-xs font-bold leading-none" viewBox="0 0 24 24">
-                <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.275 1.564-1.724 4.597-6.887 4.597-4.461 0-8.1-3.69-8.1-8.2s3.639-8.2 8.1-8.2c2.541 0 4.246 1.09 5.218 2.025l3.242-3.123C18.618 1.517 15.698 0 12.24 0a12 12 0 0 0-12 12 12 12 0 0 0 12 12c6.286 0 10.457-4.417 10.457-10.635 0-.715-.078-1.26-.174-1.802z" />
-              </svg>
-              <span>Authenticate with Institutional SSO</span>
-            </button>
-          </div>
+              <button
+                onClick={async () => {
+                  try {
+                    await googleSignIn();
+                    setOnboardingStep('cluster');
+                  } catch (err) {
+                    console.error("Sign-in failed:", err);
+                  }
+                }}
+                className="w-full h-11 bg-white hover:bg-slate-50 text-slate-800 rounded-xl font-bold flex items-center justify-center space-x-2.5 text-xs cursor-pointer shadow-sm transition"
+              >
+                <svg className="w-4 h-4 text-xs font-bold leading-none" viewBox="0 0 24 24">
+                  <path fill="#EA4335" d="M12.24 10.285V14.4h6.887c-.275 1.564-1.724 4.597-6.887 4.597-4.461 0-8.1-3.69-8.1-8.2s3.639-8.2 8.1-8.2c2.541 0 4.246 1.09 5.218 2.025l3.242-3.123C18.618 1.517 15.698 0 12.24 0a12 12 0 0 0-12 12 12 12 0 0 0 12 12c6.286 0 10.457-4.417 10.457-10.635 0-.715-.078-1.26-.174-1.802z" />
+                </svg>
+                <span>Authenticate with Institutional SSO</span>
+              </button>
+            </div>
+          )}
 
           {/* Footer branding */}
           <div className="text-center pt-2">
@@ -422,6 +679,23 @@ export default function App() {
               >
                 <BookOpen className="w-4 h-4 shrink-0 text-slate-400" />
                 <span>Courses</span>
+              </button>
+            )}
+
+            {ALLOWED_TABS_BY_ROLE[userRole].includes('assignments') && (
+              <button
+                onClick={() => {
+                  setActiveTab('assignments');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  activeTab === 'assignments' 
+                    ? 'bg-neutral-800 text-white font-bold border-l-2 border-orange-500' 
+                    : 'hover:bg-neutral-800/50 hover:text-slate-100 text-slate-400'
+                }`}
+              >
+                <FileText className="w-4 h-4 shrink-0 text-slate-400" />
+                <span>Assignments & Reflection</span>
               </button>
             )}
 
@@ -541,6 +815,23 @@ export default function App() {
               </button>
             )}
 
+            {ALLOWED_TABS_BY_ROLE[userRole].includes('auto-tutor') && (
+              <button
+                onClick={() => {
+                  setActiveTab('auto-tutor');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center space-x-3 px-3.5 py-2 rounded-lg text-xs font-semibold tracking-wide transition ${
+                  activeTab === 'auto-tutor' 
+                    ? 'bg-neutral-800 text-white font-bold border-l-2 border-fuchsia-500' 
+                    : 'hover:bg-neutral-800/50 hover:text-slate-100 text-slate-400'
+                }`}
+              >
+                <Tv className="w-4 h-4 shrink-0 text-[#d946ef]" />
+                <span className="text-zinc-300">Artemis Navigator</span>
+              </button>
+            )}
+
             {ALLOWED_TABS_BY_ROLE[userRole].includes('all-events') && (
               <button
                 onClick={() => {
@@ -576,10 +867,37 @@ export default function App() {
             )}
           </div>
 
+          {/* Group: GLOBAL FIELD CAMPUS */}
+          {ALLOWED_TABS_BY_ROLE[userRole].includes('forum-feed') && (
+            <div className="space-y-0.5">
+              <span className="px-3.5 text-[9px] font-mono font-bold tracking-widest text-slate-500 uppercase block mb-1">
+                Global Campus
+              </span>
+
+              {ALLOWED_TABS_BY_ROLE[userRole].includes('forum-feed') && (
+                <button
+                  onClick={() => {
+                    setActiveTab('forum-feed');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center space-x-3 px-3.5 py-2 rounded-lg text-xs font-semibold tracking-wide transition ${
+                    activeTab === 'forum-feed' 
+                      ? 'bg-neutral-800 text-white font-bold border-l-2 border-orange-500' 
+                      : 'hover:bg-neutral-800/50 hover:text-slate-100 text-slate-400'
+                  }`}
+                >
+                  <MessageSquare className="w-4 h-4 shrink-0 text-slate-400" />
+                  <span>Cooperative Forum / Feed</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Group 4: GRADING PLATFORM */}
           {(ALLOWED_TABS_BY_ROLE[userRole].includes('grading-sections') ||
             ALLOWED_TABS_BY_ROLE[userRole].includes('grading-advisees') ||
-            ALLOWED_TABS_BY_ROLE[userRole].includes('grading-absences')) && (
+            ALLOWED_TABS_BY_ROLE[userRole].includes('grading-absences') ||
+            ALLOWED_TABS_BY_ROLE[userRole].includes('learner-portfolio')) && (
             <div className="space-y-0.5">
               <span className="px-3.5 text-[9px] font-mono font-bold tracking-widest text-slate-500 uppercase block mb-1">
                 {userRole === 'student' ? 'Academic Program' : 'Grading'}
@@ -634,11 +952,31 @@ export default function App() {
                       : 'hover:bg-neutral-800/50 hover:text-slate-100 text-slate-400'
                   }`}
                 >
-                  <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-3 font-medium">
                     <Calendar className="w-4 h-4 shrink-0 text-slate-400" />
                     <span>Absences Log</span>
                   </div>
                   <span className="bg-red-950/40 text-red-350 border border-red-900/40 text-[8px] font-mono px-1.5 py-0.2 rounded font-bold">2 ALERTS</span>
+                </button>
+              )}
+
+              {ALLOWED_TABS_BY_ROLE[userRole].includes('learner-portfolio') && (
+                <button
+                  onClick={() => {
+                    setActiveTab('learner-portfolio');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-3.5 py-2 rounded-lg text-xs font-semibold tracking-wide transition ${
+                    activeTab === 'learner-portfolio' 
+                      ? 'bg-neutral-800 text-white font-bold border-l-2 border-orange-500' 
+                      : 'hover:bg-neutral-800/50 hover:text-slate-100 text-slate-400'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3 font-medium">
+                    <Award className="w-4 h-4 shrink-0 text-slate-400" />
+                    <span>Learner Portfolio</span>
+                  </div>
+                  <span className="bg-amber-600/25 text-amber-300 border border-amber-650/30 text-[8px] font-mono px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">cloned</span>
                 </button>
               )}
             </div>
@@ -762,7 +1100,10 @@ export default function App() {
                   {activeTab === 'reverse-engineering' && 'Deconstruction Studio'}
                   {activeTab === 'courses' && 'Active Curriculum'}
                   {activeTab === 'ai-tutor' && 'AI Critical Tutor Core'}
+                  {activeTab === 'auto-tutor' && 'Retro AutoTutor Interface'}
                   {activeTab === 'all-events' && 'Academic Roadmap Calendar'}
+                  {activeTab === 'assignments' && 'Assignments & Evaluation Panel'}
+                  {activeTab === 'forum-feed' && 'Cooperative Academic Forum'}
                 </h1>
                 
                 {activeTab === 'seminar-classroom' && (
@@ -801,6 +1142,8 @@ export default function App() {
               userInfo={getPersonaByRole(userRole, user)}
               onNavigate={(tab) => setActiveTab(tab)}
               allowedTabs={ALLOWED_TABS_BY_ROLE[userRole]}
+              userCluster={userCluster}
+              setUserCluster={setUserCluster}
             />
           )}
 
@@ -1080,6 +1423,9 @@ export default function App() {
             <div className="h-full flex flex-col">
               <CoursesModule 
                 onEnterLiveClassroom={() => setActiveTab('seminar-classroom')} 
+                userRole={userRole}
+                userCluster={userCluster}
+                setUserCluster={setUserCluster}
               />
             </div>
           )}
@@ -1087,7 +1433,14 @@ export default function App() {
           {/* 12. DYNAMIC GEMINI AI TUTOR MODULE */}
           {activeTab === 'ai-tutor' && (
             <div className="h-full flex flex-col">
-              <AiTutor />
+              <AiTutor role={userRole} cluster={userCluster} />
+            </div>
+          )}
+
+          {/* 12b. RETRO AUTOTUTOR COOPERATIVE DIALOGUE MODULE */}
+          {activeTab === 'auto-tutor' && (
+            <div className="h-full flex flex-col">
+              <AutoTutor />
             </div>
           )}
 
@@ -1095,6 +1448,38 @@ export default function App() {
           {activeTab === 'all-events' && (
             <div className="h-full flex flex-col">
               <AllEvents onEnterLiveClassroom={() => setActiveTab('seminar-classroom')} />
+            </div>
+          )}
+
+          {/* 14. CLONED LEARNER PORTFOLIO FROM USER IMAGE */}
+          {activeTab === 'learner-portfolio' && (
+            <DashboardHome
+              role={userRole}
+              userInfo={getPersonaByRole(userRole, user)}
+              onNavigate={(tab) => setActiveTab(tab)}
+              allowedTabs={ALLOWED_TABS_BY_ROLE[userRole]}
+              userCluster={userCluster}
+              setUserCluster={setUserCluster}
+            />
+          )}
+
+          {/* 15. ASSIGNMENTS & CRITIQUE PORT */}
+          {activeTab === 'assignments' && (
+            <div className="h-full flex flex-col min-h-0 overflow-hidden">
+              <AssignmentsModule 
+                role={userRole} 
+                userInfo={getPersonaByRole(userRole, user)} 
+              />
+            </div>
+          )}
+
+          {/* 16. COOPERATIVE ACADEMIC FORUM & FEED */}
+          {activeTab === 'forum-feed' && (
+            <div className="h-full flex flex-col min-h-0 overflow-hidden">
+              <ForumFeedModule 
+                role={userRole} 
+                userInfo={getPersonaByRole(userRole, user)} 
+              />
             </div>
           )}
 

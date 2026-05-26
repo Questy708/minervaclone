@@ -241,18 +241,34 @@ Generate the answer formatted in rich Markdown.`;
 
 // 5. API: AI Tutor / Academic Coach
 app.post("/api/gemini/tutor", async (req, res) => {
-  const { prompt, previousHistory } = req.body;
+  const { prompt, previousHistory, role, cluster } = req.body;
 
   if (!ai) {
     return res.status(500).json({ error: "Gemini AI client not initialized." });
   }
 
   try {
-    const systemInstruction = `You are a world-class academic tutor and cognitive coach at Artemis University. 
-Your goal is to guide students to develop supreme critical thinking using Artemis Habits of Mind and Foundational Concepts (HCs). 
-Be challenging, collegiate, rigorous, yet deeply supportive. 
-Always encourage the student to think through active parameters, such as #constraints, #breakitdown, #analogies, #correlation, or #testability. 
-Maintain a supportive analytical tone. Do not give simple copy-paste answers; instead, challenge assumptions and provide causal breakdowns.`;
+    const roleMap: Record<string, string> = {
+      faculty: "Faculty Member & Course Architect",
+      student: "Active Student & Scholar",
+      researcher: "Academic Researcher & Analyst",
+      admin: "Super Administrator"
+    };
+
+    const clusterMap: Record<string, string> = {
+      k12: "K-12 Division",
+      university: "Collegiate & Graduate Division",
+      seniors: "Seniors Active Mind Oasis"
+    };
+
+    const userContextRole = roleMap[role as string] || "User";
+    const userContextCluster = clusterMap[cluster as string] || "Artemis Forum";
+
+    const systemInstruction = `You are a world-class ambient academic companion natively integrated into the Artemis Forum dashboard.
+The user you are assisting is a ${userContextRole} in the ${userContextCluster}.
+Your goal is to guide them through their workflow within this application (e.g. grading, reviewing courses, drafting assignments, analyzing students' absences, reverse engineering).
+Do not break character. Do not say you are an AI that can't access their dashboard. Treat the user's prompt as context to their current UI view. Be brief, professional, and directly actionable.
+Encourage the use of Artemis Habits of Mind (HCs) if relevant, such as #constraints, #breakitdown, or #correlation. Maintain a highly structured, supportive analytical tone.`;
 
     const contents = [
       ...(previousHistory || []),
@@ -268,7 +284,7 @@ Maintain a supportive analytical tone. Do not give simple copy-paste answers; in
       }
     });
 
-    res.json({ reply: response.text || "I am reflecting on your thought process. Could you refine your hypothesis?" });
+    res.json({ reply: response.text || "I am reflecting on your dashboard context. How may I assist further?" });
   } catch (error: any) {
     console.error("AI Tutor engine error:", error);
     res.status(500).json({ error: error.message });

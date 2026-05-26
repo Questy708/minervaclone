@@ -61,3 +61,28 @@ export interface ReverseEngineeringClue {
   imageUrl: string;
   clueText: string;
 }
+
+export type LearningCluster = 'k12' | 'university' | 'seniors';
+
+export interface Course {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  professor: string;
+  schedule: string;
+  location: string;
+  enrolled: number;
+  status: 'active' | 'upcoming' | 'past' | 'visiting' | 'assisting';
+  cluster: LearningCluster;
+  department: 'Humanities' | 'Social Sciences' | 'STEM' | 'Arts' | 'Interdisciplinary';
+  level: 'Introductory' | 'Intermediate' | 'Advanced';
+  approvalStatus: 'approved' | 'pending_approval';
+  syllabus: {
+    unit: string;
+    weeks: string[];
+    objectives: string[];
+    hcsMapped: string[];
+  };
+}
+

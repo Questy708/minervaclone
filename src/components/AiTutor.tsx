@@ -22,7 +22,9 @@ import {
   MoreHorizontal,
   Box,
   MessageSquare,
-  ChevronUp
+  ChevronUp,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 interface Message {
@@ -30,51 +32,114 @@ interface Message {
   sender: 'user' | 'ai';
   text: string;
   timestamp: string;
-  steps?: {
-    status: 'completed' | 'running' | 'pending';
-    title: string;
-    text?: string;
-  }[];
 }
 
-const PRESET_TOPICS = [
-  {
-    title: 'Explain #constraints modeling',
-    prompt: 'Can you teach me how to identify active and latent constraints (#constraints) when modeling political resistance systems?',
-    tag: '#constraints'
-  },
-  {
-    title: 'Cause-effect loop analysis #breakitdown',
-    prompt: 'I want to examine the causal factors of the Bronze Age Collapse. Please guide me through #breakitdown step-by-step.',
-    tag: '#breakitdown'
-  },
-  {
-    title: 'Causation vs Correlation in polls',
-    prompt: 'During live class polls, students often mix up causation and correlation. How can I formulate a testable setup to isolate variables?',
-    tag: '#correlation'
-  },
-  {
-    title: 'Analyze Capstone #testability',
-    prompt: 'I am planning a capstone on neuro-sensory feedback loops. Review my empirical testing layout using #testability heuristics.',
-    tag: '#testability'
-  }
-];
-
-const HC_GUIDES = [
-  { code: '#constraints', text: 'Define bounds of possible solutions' },
-  { code: '#analogies', text: 'Transfer structural knowledge' },
-  { code: '#breakitdown', text: 'Divide complex systems into subparts' },
-  { code: '#correlation', text: 'Isolate statistical causal vectors' },
-  { code: '#dataviz', text: 'Present quantitative data beautifully' }
-];
-
-export default function AiTutor() {
+export default function AiTutor({ role = 'student', cluster = 'university' }: { role?: string, cluster?: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
+
+  const getPresetsForRole = () => {
+    switch (role) {
+      case 'faculty':
+        return [
+          { title: 'Draft Seminar Syllabus', prompt: 'I want to draft a new syllabus for my upcoming seminar focusing on Sensation vs Perception.', tag: 'Course Builder' },
+          { title: 'Grade Pending Submissions', prompt: 'Show me the criteria for grading the newest submissions from my SS110 section.', tag: 'Assessment' },
+          { title: 'Analyze Attendance', prompt: 'Help me review the recent absence reports for students under Academic Warning.', tag: 'Advising' }
+        ];
+      case 'student':
+        return [
+          { title: 'Review HC Feedback', prompt: 'Can you help me understand the feedback I received on my use of #constraints?', tag: 'Feedback' },
+          { title: 'Prepare for Class', prompt: 'What are the core concepts I should review before my seminar at 17:05?', tag: 'Preparation' },
+          { title: 'Brainstorm Capstone', prompt: 'I need to brainstorm empirical testing layouts for my thesis using #testability.', tag: 'Research' }
+        ];
+      case 'researcher':
+        return [
+          { title: 'Analyze Learning Outcomes', prompt: 'Can we identify any statistical #correlation between the new visual curriculum and attendance?', tag: 'Telemetry' },
+          { title: 'Reverse Engineer Schema', prompt: 'Help me reverse engineer the new grading assessment layout schema.', tag: 'Architecture' }
+        ];
+      default:
+        return [
+          { title: 'Dashboard Overview', prompt: 'Give me a summary of active modules running on the forum today.', tag: 'System' }
+        ];
+    }
+  };
+
+  const presetTopics = getPresetsForRole();
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [activeHcFilter, setActiveHcFilter] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Web Speech API Integration
+  const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
+  const [currentlySpeakingId, setCurrentlySpeakingId] = useState<string | null>(null);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const stopActiveSpeech = () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setCurrentlySpeakingId(null);
+  };
+
+  const speakText = (text: string, messageId?: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    
+    // Stop ongoing speech
+    stopActiveSpeech();
+
+    // Clean markdown/symbols for naturally sounding speech
+    const cleanText = text
+      .replace(/\*\*|#/g, '')
+      .replace(/\[.*?\]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) return;
+
+    try {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      
+      // Select an elegant English voice if available
+      const voices = window.speechSynthesis.getVoices();
+      const preferredVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Apple') || v.name.includes('Samantha'))) || voices.find(v => v.lang.startsWith('en')) || voices[0];
+      
+      if (preferredVoice) {
+        utterance.voice = preferredVoice;
+      }
+      utterance.rate = 1.05; // Slightly faster for clean pacing
+      utterance.pitch = 1.0;
+
+      utterance.onstart = () => {
+        if (messageId) {
+          setCurrentlySpeakingId(messageId);
+        }
+      };
+
+      utterance.onend = () => {
+        setCurrentlySpeakingId(null);
+      };
+
+      utterance.onerror = () => {
+        setCurrentlySpeakingId(null);
+      };
+
+      currentUtteranceRef.current = utterance;
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.error("Speech synthesis failed:", err);
+      setCurrentlySpeakingId(null);
+    }
+  };
+
+  // Safe Speech Clean-up on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   // Auto scroll
   useEffect(() => {
@@ -83,6 +148,9 @@ export default function AiTutor() {
 
   const handleSendMessage = async (textToSend: string) => {
     if (!textToSend.trim() || isLoading) return;
+
+    // Immediately halt outstanding speech synthesis narration
+    stopActiveSpeech();
 
     const userMsg: Message = {
       id: `msg-user-${Date.now()}`,
@@ -96,11 +164,7 @@ export default function AiTutor() {
       id: newAiMsgId,
       sender: 'ai',
       text: '', // Empty initially
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      steps: [
-        { status: 'completed', title: 'Identify core subject and student parameters', text: 'Starting to map educational context...' },
-        { status: 'running', title: 'Trace heuristics and causal blocks', text: 'Manus is working: Synthesizing concepts for response structure.' }
-      ]
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, userMsg, initialAiReply]);
@@ -113,6 +177,8 @@ export default function AiTutor() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prompt: textToSend,
+          role,
+          cluster,
           previousHistory: messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'model', parts: [{ text: m.text }] }))
         })
       });
@@ -122,50 +188,48 @@ export default function AiTutor() {
       }
 
       const data = await response.json();
+      const replyText = data.reply || data.text || "I apologize, my neural connections are currently refactoring logic blocks. Let us revisit this question momentarily.";
       
       setMessages(prev => prev.map(m => m.id === newAiMsgId ? {
         ...m,
-        text: data.reply || data.text || "I apologize, my neural connections are currently refactoring logic blocks. Let us revisit this question momentarily.",
-        steps: [
-          { status: 'completed', title: 'Analyze instructional context' },
-          { status: 'completed', title: 'Identify relevant concepts and frameworks' }
-        ]
+        text: replyText
       } : m));
+
+      if (isSpeechEnabled) {
+        speakText(replyText, newAiMsgId);
+      }
       setIsLoading(false);
 
     } catch (err) {
-      console.warn("AI Tutor call failed, falling back to simulated high-fidelity Artemis response:", err);
+      console.warn("AI Tutor call failed, falling back to simulated logic:", err);
       
       // Smart Fallback simulation reflecting academic tone
       setTimeout(() => {
-        let simulatedReply = "The concept you are raising requires critical structural tracing. ";
+        let simulatedReply = `Accessing your Artemis ${role} dashboard modules now...`;
         
-        if (textToSend.includes('#constraints')) {
-          simulatedReply = "When applying **#constraints**, you must carefully outline both explicit material constraints (such as physical budgets or law variables) and latent cognitive constraints (such as selective memory filters). Tracing these bounds prevents over-engineered solutions.";
-        } else if (textToSend.includes('#breakitdown')) {
-          simulatedReply = "Decomposing this system using **#breakitdown** requires and isolates three key causal tiers: \n1. Primary Environmental Pressures (e.g. climate shifts, resource drying).\n2. Socio-Political Fragility (highly consolidated administrative units, debt peaks).\n3. Secondary Activations (propaganda brochures, civil unrest triggers).";
-        } else if (textToSend.includes('#correlation')) {
-          simulatedReply = "Establishing causal bonds over observed correlations (**#correlation**) requires rigorous counterfactual test layouts. We must determine: would state changes fail to happen in the absolute absence of the primary variable? If so, causation is plausible.";
-        } else if (textToSend.includes('#testability')) {
-          simulatedReply = "To optimize your thesis's **#testability**, specify an empirical, repeatable baseline. Guard your study against standard confirmation bias using blinded double-referee audits.";
-        } else {
-          simulatedReply = "To audit this causal loop systematically, let us isolate its core independent and dependent variables. If you apply **#breakitdown**, which constituent parts seem most volatile to outer changes?";
+        if (textToSend.toLowerCase().includes('syllabus')) {
+          simulatedReply = "Connecting to the Course Builder module. To draft a syllabus for your SS110 section, let us first identify which Foundational Concepts you are targeting for this academic term.";
+        } else if (textToSend.toLowerCase().includes('grade') || textToSend.toLowerCase().includes('feedback')) {
+          simulatedReply = "Navigating to Class Assessments. I can see 14 pending submissions. When grading, remember to align feedback with the specific #breakitdown or #constraints heuristics requested by the rubric.";
+        } else if (textToSend.toLowerCase().includes('prepare')) {
+          simulatedReply = "Pulling up today's Seminar Classroom feed. The previous session ended on a debate about normative claims. For today's session, I recommend brushing up on #correlation methodologies to verify student hypotheses.";
         }
 
         setMessages(prev => prev.map(m => m.id === newAiMsgId ? {
           ...m,
-          text: simulatedReply,
-          steps: [
-            { status: 'completed', title: 'Identify core subject and student parameters' },
-            { status: 'completed', title: 'Trace heuristics and causal blocks' }
-          ]
+          text: simulatedReply
         } : m));
+        
+        if (isSpeechEnabled) {
+          speakText(simulatedReply, newAiMsgId);
+        }
         setIsLoading(false);
       }, 3000);
     }
   };
 
   const handleReset = () => {
+    stopActiveSpeech();
     setMessages([]);
   };
 
@@ -196,22 +260,21 @@ export default function AiTutor() {
 
         {/* TOPICS LIST / HISTORY */}
         <div className="space-y-1 mt-2 flex-grow overflow-y-auto scrollbar-none">
-          {PRESET_TOPICS.map((topic, i) => (
+          {presetTopics.map((topic, i) => (
             <button
               key={i}
               onClick={() => handleSendMessage(topic.prompt)}
               className="w-full text-left p-3 rounded-lg hover:bg-slate-100 transition group flex items-start gap-3 cursor-pointer"
             >
-              <div className="mt-0.5 bg-slate-800 text-white rounded-full p-1 shrink-0">
-                <Box className="w-4 h-4" />
+              <div className="mt-0.5 bg-indigo-600 text-white rounded-full p-1.5 shrink-0">
+                <Brain className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium text-slate-800 truncate">{topic.title}</span>
-                  <span className="text-[10px] text-slate-400 shrink-0">{i + 1}h ago</span>
                 </div>
                 <p className="text-xs text-slate-500 truncate mt-0.5">
-                  I'll help you explore {topic.tag}...
+                  Explore {topic.tag}...
                 </p>
               </div>
             </button>
@@ -226,7 +289,21 @@ export default function AiTutor() {
             </div>
             <span className="text-sm font-medium text-slate-800">Gavin Phillips</span>
           </div>
-          <div className="flex items-center gap-1 text-slate-500">
+          <div className="flex items-center gap-1.5 text-slate-500">
+            <button 
+              onClick={() => {
+                if (isSpeechEnabled) {
+                  stopActiveSpeech();
+                }
+                setIsSpeechEnabled(!isSpeechEnabled);
+              }}
+              className={`p-1.5 rounded-md transition cursor-pointer ${
+                isSpeechEnabled ? 'text-sky-600 bg-sky-50 hover:bg-sky-100' : 'text-slate-400 hover:bg-slate-100'
+              }`}
+              title={isSpeechEnabled ? "Speech Narration Active" : "Speech Narration Muted"}
+            >
+              {isSpeechEnabled ? <Volume2 className="w-[18px] h-[18px]" /> : <VolumeX className="w-[18px] h-[18px]" />}
+            </button>
             <button className="p-1 hover:bg-slate-100 rounded-md transition cursor-pointer">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
             </button>
@@ -250,6 +327,32 @@ export default function AiTutor() {
               {messages.filter(m => m.sender === 'user')[0]?.text || 'New Task'}
             </h2>
             <div className="flex items-center space-x-2 shrink-0">
+              <button
+                onClick={() => {
+                  if (isSpeechEnabled) {
+                    stopActiveSpeech();
+                  }
+                  setIsSpeechEnabled(!isSpeechEnabled);
+                }}
+                className={`px-3 py-1.5 flex items-center gap-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition cursor-pointer ${
+                  isSpeechEnabled 
+                    ? 'bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-100 shadow-xs' 
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                }`}
+                title={isSpeechEnabled ? "Narration On" : "Narration Muted"}
+              >
+                {isSpeechEnabled ? (
+                  <>
+                    <Volume2 className="w-3.5 h-3.5 text-sky-600" />
+                    <span>Narration On</span>
+                  </>
+                ) : (
+                  <>
+                    <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Narration Off</span>
+                  </>
+                )}
+              </button>
               <button className="px-3 py-1.5 flex items-center gap-1.5 rounded-md hover:bg-slate-100 text-slate-600 text-sm font-medium transition cursor-pointer">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
                 <span>Share</span>
@@ -272,8 +375,8 @@ export default function AiTutor() {
             <div className="flex-grow flex flex-col items-center justify-center p-6 text-center animate-fade-in relative">
               <div className="w-full max-w-3xl space-y-8">
                 <div className="space-y-1 text-left w-full pl-2">
-                  <h2 className="text-4xl font-serif font-medium text-slate-800">Hello</h2>
-                  <h3 className="text-4xl font-serif font-medium text-slate-500">What can I do for you?</h3>
+                  <h2 className="text-4xl font-serif font-medium text-slate-800">Knowledge Navigator</h2>
+                  <h3 className="text-2xl font-serif font-medium text-slate-500 mt-2">I am plugged into your {role} dashboard. What would you like to build today?</h3>
                 </div>
                 
                 {/* Centered Large Input */}
@@ -368,79 +471,59 @@ export default function AiTutor() {
                       className="flex flex-col animate-fade-in w-full text-left items-start space-y-4"
                     >
                     {m.sender === 'user' ? (
-                      // User Message (Manus style - left aligned heading/text block)
+                      // User Message
                       <div className="w-full">
                         <div className="flex items-center gap-2 mb-2">
-                          <div className="w-6 h-6 rounded bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600">You</div>
+                          <div className="w-6 h-6 rounded bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700">You</div>
                         </div>
                         <div className="text-[18px] md:text-[20px] font-serif text-slate-800 leading-snug">
                           {m.text}
                         </div>
                       </div>
                     ) : (
-                      // AI Message (Manus style)
+                      // AI Message (Knowledge Navigator style)
                       <div className="w-full flex flex-col space-y-4">
-                        {m.steps && m.steps.length > 0 && (
-                          <div className="bg-[#FAFAFA] border border-slate-200/60 rounded-2xl p-5 space-y-4">
-                            {/* Datasource / status pill */}
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 rounded-full text-xs font-medium text-slate-600 border border-slate-200/60">
-                                <Sparkles className="w-3.5 h-3.5 text-slate-400" />
-                                Connected to specialized heuristic context
-                                <ChevronRight className="w-3 h-3 text-slate-400 rotate-90 ml-1" />
-                              </span>
-                            </div>
-
-                            <div className="space-y-4 pl-2">
-                              {m.steps.map((step, idx) => (
-                                <div key={idx} className="flex gap-3">
-                                  <div className="mt-0.5 shrink-0">
-                                    {step.status === 'completed' ? (
-                                      <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><polyline points="20 6 9 17 4 12"/></svg>
-                                      </div>
-                                    ) : (
-                                      <div className="w-5 h-5 rounded-full border border-slate-300 flex items-center justify-center bg-white shadow-sm overflow-hidden relative">
-                                        <div className="w-3 h-3 bg-blue-500 rounded-full animate-ping" />
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 space-y-2">
-                                    <h4 className="text-[15px] font-medium text-slate-800 flex items-center gap-2">
-                                      {step.title}
-                                      {step.status === 'completed' && <ChevronUp className="w-3.5 h-3.5 text-slate-400" />}
-                                    </h4>
-                                    
-                                    {step.text && (
-                                      <div className="text-[13px] text-slate-500 leading-relaxed font-sans">
-                                        {step.status === 'running' ? (
-                                          <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-slate-200/80 shadow-sm">
-                                            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                                            <span className="font-medium text-slate-700">{step.text}</span>
-                                          </div>
-                                        ) : (
-                                          <div className="pl-1">
-                                            {step.text}
-                                            <div className="mt-2 text-slate-400 bg-slate-100/50 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono border border-slate-200/50">
-                                              <Play className="w-3 h-3" />
-                                              Executing contextual alignment
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center">
+                            <Brain className="w-3.5 h-3.5 text-white" />
                           </div>
-                        )}
+                          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Knowledge Navigator</span>
+                        </div>
                         
                         {/* Actual AI Response Text */}
-                        {m.text && (
-                          <div className="text-[15px] text-slate-800 leading-relaxed font-sans prose prose-slate whitespace-pre-wrap">
-                            {m.text}
+                        {m.text ? (
+                          <div className="space-y-4">
+                            <div className="text-[15px] text-slate-800 leading-relaxed font-sans prose prose-slate whitespace-pre-wrap">
+                              {m.text}
+                            </div>
+                            <div className="flex items-center gap-2 pt-2 border-t border-slate-100/70">
+                              <button
+                                onClick={() => currentlySpeakingId === m.id ? stopActiveSpeech() : speakText(m.text, m.id)}
+                                className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold tracking-wide cursor-pointer transition shadow-xs ${
+                                  currentlySpeakingId === m.id
+                                    ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200'
+                                    : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+                                }`}
+                              >
+                                {currentlySpeakingId === m.id ? (
+                                  <>
+                                    <VolumeX className="w-3.5 h-3.5 animate-pulse" />
+                                    <span>Mute Reader</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Volume2 className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>Read Aloud</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
+                        ) : (
+                           <div className="flex items-center gap-2 text-slate-500 text-sm italic font-serif">
+                             <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                             Reading context...
+                           </div>
                         )}
                       </div>
                     )}
@@ -465,7 +548,7 @@ export default function AiTutor() {
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Message Manus..."
+                    placeholder={`Ask Navigator about your ${role} dashboard...`}
                     className="w-full pl-12 pr-14 py-4 bg-transparent outline-none text-slate-800 placeholder-slate-400 font-sans text-sm rounded-2xl"
                   />
                   <div className="absolute left-4 top-1/2 -translate-y-1/2">

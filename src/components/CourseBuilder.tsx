@@ -504,51 +504,38 @@ export default function CourseBuilder({
   const handleGenerateLessonPlan = async () => {
     setIsGeneratingPlan(true);
     try {
-      const response = await fetch("/api/gemini/discuss", {
+      const response = await fetch("/api/gemini/generate-lesson", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          topic: `Generate a structured lesson plan for Course: "${courseNameInput}" on Topic: "${topicInput}". 
-Output EXACTLY a JSON array of 4 activity steps in this strictly validated schema:
-[
-  {
-    "name": "string (Title of the step)",
-    "layout": "string (e.g. 'LAYOUT: 3-UP' or 'LAYOUT: Full Screen')",
-    "mode": "string (e.g. 'discussion', 'presentation', 'quiz')",
-    "duration": "string (e.g. '10m')"
-  }
-]
-Do not include markdown blocks or any other text, just the JSON array.`,
+          topic: topicInput,
+          courseName: courseNameInput,
         }),
       });
       const data = await response.json();
-      if (response.ok && data.text) {
-        let parsed = [];
-        try {
-          const cleanedText = data.text.replace(/```json/gi, '').replace(/```/g, '').trim();
-          parsed = JSON.parse(cleanedText);
-        } catch (err) {
-            console.error("JSON parse failed", err, data.text);
-            parsed = [
-              { name: "Introduction to " + topicInput, layout: "LAYOUT: Full Screen", mode: "presentation", duration: "10m" },
-              { name: "Concept Discussion", layout: "LAYOUT: 3-UP", mode: "discussion", duration: "20m" },
-              { name: "Group Activity", layout: "LAYOUT: Gallery", mode: "collaboration", duration: "15m" },
-              { name: "Summary and Debrief", layout: "LAYOUT: Full Screen", mode: "presentation", duration: "5m" }
-            ];
-        }
+      if (response.ok && data.lessonTimeline) {
+        let parsed = data.lessonTimeline;
         
         if (Array.isArray(parsed) && parsed.length > 0) {
-            const list = parsed.map((item, idx) => ({
+            const list = parsed.map((item: any, idx: number) => ({
                 id: `ai-step-${Date.now()}-${idx}`,
-                name: item.name || "Activity Step",
+                name: item.title || "Activity Step",
                 layout: item.layout || "LAYOUT: Full Screen",
-                mode: item.mode || "discussion",
+                mode: item.type || "discussion",
                 duration: item.duration || "10m"
             }));
             handleUpdateNode({ steps: list });
             recalculateNodeDuration(list);
+            
+            if (data.recommendedHCs && data.recommendedHCs.length > 0) {
+              const currentTags = [...activeNode.tags, ...data.recommendedHCs.slice(0, 2)];
+              handleUpdateNode({ tags: Array.from(new Set(currentTags)) });
+            }
+            
             triggerNotification(`Action plan generated for ${topicInput}`);
         }
+      } else {
+        triggerNotification("Failed to parse standard structure. Using fallback.");
       }
     } catch (e) {
       console.error(e);

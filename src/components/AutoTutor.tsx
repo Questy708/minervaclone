@@ -18,7 +18,8 @@ import {
   Users,
   BrainCircuit,
   MessageSquare,
-  ChevronRight
+  ChevronRight,
+  PhoneOff
 } from 'lucide-react';
 
 interface Article {

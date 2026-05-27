@@ -80,6 +80,45 @@ interface SkillDetails {
   };
 }
 
+const DashboardSkeleton = () => (
+  <div className="space-y-6">
+    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-4 gap-4 animate-pulse">
+      <div>
+        <div className="flex items-center space-x-2 mb-2">
+          <div className="w-32 h-5 bg-slate-200 rounded-md" />
+          <div className="w-24 h-5 bg-slate-200 rounded-full" />
+        </div>
+        <div className="w-96 h-8 bg-slate-200 rounded-md" />
+      </div>
+      <div className="w-72 h-10 bg-slate-200 rounded-xl" />
+    </div>
+
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="lg:col-span-4 space-y-6">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm min-h-[400px] animate-pulse">
+           <div className="w-48 h-10 bg-slate-200 rounded mb-2" />
+           <div className="w-32 h-4 bg-slate-200 rounded mb-2" />
+           <div className="w-40 h-4 bg-slate-200 rounded mb-6" />
+           <div className="w-full h-16 bg-slate-200 rounded mb-6" />
+           <div className="w-full h-64 bg-slate-200 rounded-xl" />
+        </div>
+      </div>
+      <div className="lg:col-span-8 bg-white rounded-2xl border border-slate-200 p-6 shadow-xs min-h-[600px] animate-pulse">
+         <div className="flex space-x-6 border-b border-slate-200 pb-4 mb-6">
+            <div className="w-24 h-6 bg-slate-200 rounded" />
+            <div className="w-32 h-6 bg-slate-200 rounded" />
+            <div className="w-28 h-6 bg-slate-200 rounded" />
+         </div>
+         <div className="grid grid-cols-12 gap-4">
+            <div className="col-span-12 h-[260px] bg-slate-200 rounded-2xl" />
+            <div className="col-span-6 h-[140px] bg-slate-200 rounded-2xl" />
+            <div className="col-span-6 h-[140px] bg-slate-200 rounded-2xl" />
+         </div>
+      </div>
+    </div>
+  </div>
+);
+
 export default function DashboardHome({
   role,
   userInfo,
@@ -88,6 +127,15 @@ export default function DashboardHome({
   userCluster = "university",
   setUserCluster
 }: DashboardHomeProps) {
+  const [isLoading, setIsLoading] = useState(true);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1500); // 1.5 second loading skeleton simulation
+    return () => clearTimeout(timer);
+  }, []);
+
   // --- INTEGRATED PORTFOLIO STATES ---
   const [activePortfolioTab, setActivePortfolioTab] = useState<"portfolio" | "reflections" | "transcript" | "graduation-audit">("portfolio");
   const [isMajorExpanded, setIsMajorExpanded] = useState(true);
@@ -588,9 +636,13 @@ Reviewing inquiry: "${promptToSend.slice(0, 75)}..." keyed under academic profil
         {/* ================= CLONED GORGEOUS LEARNER PORTFOLIO (THE MAIN INTERACTIVE WORKSPACE) ================= */}
         <div id="central-learner-portfolio-workspace" className="space-y-6">
           
-          {/* Header Bar within Portfolio */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-4 gap-4">
-            <div>
+          {isLoading ? (
+            <DashboardSkeleton />
+          ) : (
+            <>
+              {/* Header Bar within Portfolio */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-4 gap-4">
+                <div>
               <div className="flex items-center space-x-2">
                 <span className="bg-orange-600 text-white text-[9px] font-extrabold font-mono tracking-widest px-2.5 py-0.5 rounded-md uppercase">
                   {role === "student" ? "My Personal Portfolio" : "Adviser Dossier Workspace"}
@@ -1232,6 +1284,9 @@ Reviewing inquiry: "${promptToSend.slice(0, 75)}..." keyed under academic profil
             </main>
 
           </div>
+
+          </>
+          )}
 
         </div>
 

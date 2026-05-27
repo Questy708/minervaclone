@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useConfirm } from './ConfirmProvider';
 import { 
   BookOpen, 
   Search, 
@@ -381,6 +382,7 @@ export default function CoursesModule({
   userCluster = 'university',
   setUserCluster
 }: CoursesModuleProps) {
+  const { confirm } = useConfirm();
   
   // Real LocalStorage-backed State for the comprehensive Yale Catalog
   const [courses, setCourses] = useState<Course[]>(() => {
@@ -545,8 +547,15 @@ export default function CoursesModule({
     }));
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to remove this course from the catalogue?")) {
+  const handleDelete = async (id: string) => {
+    const isConfirmed = await confirm({
+      title: 'Remove Course',
+      message: 'Are you sure you want to remove this course from the catalogue? This action cannot be undone.',
+      confirmText: 'Remove Course',
+      cancelText: 'Cancel'
+    });
+    
+    if (isConfirmed) {
       setCourses(prev => prev.filter(c => c.id !== id));
       if (selectedCourseId === id) {
         setSelectedCourseId('ss110');

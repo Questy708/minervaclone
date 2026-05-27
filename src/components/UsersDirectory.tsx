@@ -6,7 +6,7 @@ import { INITIAL_STUDENTS } from '../data';
 export default function UsersDirectory() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState<'all' | 'faculty' | 'student'>('all');
-  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
 
   // Expanded student list with additional performance metrics for directory view
   const rosterData = [

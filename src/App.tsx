@@ -54,6 +54,7 @@ import {
 
 type AppTab = 
   | 'dashboard' 
+  | 'old-dashboard'
   | 'course-builder' 
   | 'class-assessments' 
   | 'outcome-index' 

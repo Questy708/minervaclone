@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Calendar, User, Search, Sparkles, AlertTriangle, CheckCircle2, XCircle, Clock, Check } from 'lucide-react';
+import { Calendar, User, Search, Sparkles, AlertTriangle, CheckCircle2, XCircle, Clock, Check, Trash2 } from 'lucide-react';
+import { useConfirm } from './ConfirmProvider';
 
 interface AbsenceRecord {
   id: string;
@@ -12,6 +13,7 @@ interface AbsenceRecord {
 }
 
 export default function AbsencesTracker() {
+  const { confirm } = useConfirm();
   const [records, setRecords] = useState<AbsenceRecord[]>([
     { id: 'ab1', studentName: 'Paul', date: 'May 18, 2026', sessionTitle: 'SS110 Session 1.4 - Framing Causal Links', status: 'Excused', resolved: true, notes: 'Medical certificate submitted.' },
     { id: 'ab2', studentName: 'Matthew', date: 'May 15, 2026', sessionTitle: 'SS110 Session 1.2 - Feedback Loops', status: 'Unexcused', resolved: false, notes: 'Absent without notifying instructor.' },
@@ -30,6 +32,19 @@ export default function AbsencesTracker() {
       }
       return rec;
     }));
+  };
+
+  const handleDelete = async (id: string) => {
+    const isConfirmed = await confirm({
+      title: 'Delete Absence Record',
+      message: 'Are you sure you want to delete this absence record? This action cannot be undone.',
+      confirmText: 'Delete Record',
+      cancelText: 'Cancel'
+    });
+    
+    if (isConfirmed) {
+      setRecords(prev => prev.filter(rec => rec.id !== id));
+    }
   };
 
   const filteredRecords = records.filter(rec => {
@@ -136,6 +151,7 @@ export default function AbsencesTracker() {
                   <th scope="col" className="px-4 py-3 font-semibold text-center">Status</th>
                   <th scope="col" className="px-4 py-3 font-semibold text-center">Dossier Resolved</th>
                   <th scope="col" className="px-6 py-3 font-semibold text-right">Administrative Notes</th>
+                  <th scope="col" className="px-6 py-3 font-semibold text-center">Actions</th>
                 </tr>
               </thead>
 
@@ -181,6 +197,15 @@ export default function AbsencesTracker() {
                     </td>
                     <td className="px-6 py-3.5 text-right font-medium text-slate-500 max-w-sm truncate text-wrap">
                       {rec.notes}
+                    </td>
+                    <td className="px-6 py-3.5 text-center">
+                      <button
+                        onClick={() => handleDelete(rec.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        title="Delete record"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}

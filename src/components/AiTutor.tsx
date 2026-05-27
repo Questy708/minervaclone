@@ -1,4 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { 
   Brain, 
   Send, 
@@ -23,15 +27,38 @@ import {
   Box,
   MessageSquare,
   ChevronUp,
+  ChevronDown,
   Volume2,
-  VolumeX
+  VolumeX,
+  CheckCircle2,
+  Circle,
+  Terminal,
+  Search,
+  FilePlus,
+  Loader2,
+  Square,
+  Mic,
+  LayoutTemplate,
+  MessageCircle,
+  Minus,
+  X
 } from 'lucide-react';
+
+type StepLog = { type: 'text' | 'command' | 'search' | 'file'; content: string };
+interface AgentStep {
+  id: string;
+  title: string;
+  status: 'pending' | 'active' | 'completed';
+  logs: StepLog[];
+  isExpanded?: boolean;
+}
 
 interface Message {
   id: string;
   sender: 'user' | 'ai';
   text: string;
   timestamp: string;
+  steps?: AgentStep[];
 }
 
 export default function AiTutor({ role = 'student', cluster = 'university' }: { role?: string, cluster?: string }) {
@@ -132,6 +159,97 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
     }
   };
 
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = true;
+        recognitionRef.current.interimResults = true;
+        
+        recognitionRef.current.onresult = (event: any) => {
+          let currentTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            currentTranscript += event.results[i][0].transcript;
+          }
+          setTranscript(prev => prev + currentTranscript);
+        };
+
+        recognitionRef.current.onerror = (event: any) => {
+          console.error("Speech recognition error", event.error);
+          if (event.error === 'not-allowed') {
+            // Because preview iframes block microphones, we'll mock it so they can see the flow.
+            setTranscript("Hey jarvis, how do I create a new syllabus?");
+            setTimeout(() => {
+                setIsVoiceMode(false);
+                setIsRecording(false);
+                setInput("Hey jarvis, how do I create a new syllabus?");
+                setPendingVoiceText("Hey jarvis, how do I create a new syllabus?");
+                setTranscript('');
+            }, 1500);
+          } else {
+             setIsRecording(false);
+          }
+        };
+      }
+    }
+  }, []);
+
+  const handleStartVoice = () => {
+    setIsVoiceMode(true);
+    setIsRecording(true);
+    setTranscript('');
+    
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error(e);
+      }
+    } else {
+      // Mock if speech recognition not supported
+      setTimeout(() => {
+         setTranscript("Hey jarvis, how do I create a new syllabus?");
+      }, 2000);
+      setTimeout(() => {
+          setIsVoiceMode(false);
+          setIsRecording(false);
+          setInput("Hey jarvis, how do I create a new syllabus?");
+          setPendingVoiceText("Hey jarvis, how do I create a new syllabus?");
+          setTranscript('');
+      }, 4000);
+    }
+  };
+
+  const [pendingVoiceText, setPendingVoiceText] = useState('');
+
+  useEffect(() => {
+    if (pendingVoiceText) {
+      handleSendMessage(pendingVoiceText);
+      setPendingVoiceText('');
+    }
+  }, [pendingVoiceText]);
+
+  const handleStopVoice = (finalText?: string) => {
+    setIsVoiceMode(false);
+    setIsRecording(false);
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch(e){}
+    }
+    const textToSubmit = typeof finalText === 'string' ? finalText : transcript;
+    
+    if (textToSubmit.trim()) {
+       setInput(textToSubmit);
+       setPendingVoiceText(textToSubmit);
+       setTranscript('');
+    }
+  };
+  
   // Safe Speech Clean-up on unmount
   useEffect(() => {
     return () => {
@@ -145,6 +263,13 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  const toggleStep = (msgId: string, stepId: string) => {
+    setMessages(prev => prev.map(m => m.id === msgId && m.steps ? {
+      ...m,
+      steps: m.steps.map(s => s.id === stepId ? { ...s, isExpanded: !s.isExpanded } : s)
+    } : m));
+  };
 
   const handleSendMessage = async (textToSend: string) => {
     if (!textToSend.trim() || isLoading) return;
@@ -164,15 +289,40 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
       id: newAiMsgId,
       sender: 'ai',
       text: '', // Empty initially
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      steps: [
+        { id: 's1', title: 'Connecting to dashboard environment', status: 'active', logs: [{ type: 'text', content: 'Starting to process request and analyzing user context.' }], isExpanded: true }
+      ]
     };
 
     setMessages(prev => [...prev, userMsg, initialAiReply]);
     setInput('');
     setIsLoading(true);
 
+    // Simulation Sequence
+    setTimeout(() => {
+      setMessages(prev => prev.map(m => m.id === newAiMsgId ? {
+        ...m,
+        steps: [
+          { id: 's1', title: 'Connecting to dashboard environment', status: 'completed', logs: [{ type: 'text', content: 'Starting to process request and analyzing user context.' }, { type: 'command', content: '>_ Executing init_context --strict' }], isExpanded: false },
+          { id: 's2', title: `Analyze context for: "${textToSend.slice(0, 25)}..."`, status: 'active', logs: [ { type: 'text', content: 'Identifying the intent and gathering required information.' } ], isExpanded: true }
+        ]
+      } : m));
+    }, 1200);
+
+    setTimeout(() => {
+      setMessages(prev => prev.map(m => m.id === newAiMsgId ? {
+        ...m,
+        steps: [
+          { id: 's1', title: 'Connecting to dashboard environment', status: 'completed', logs: [{ type: 'text', content: 'Starting to process request and analyzing user context.' }, { type: 'command', content: '>_ Executing init_context --strict' }], isExpanded: false },
+          { id: 's2', title: `Analyze context for: "${textToSend.slice(0, 25)}..."`, status: 'completed', logs: [ { type: 'text', content: 'Identifying the intent and gathering required information.' }, { type: 'search', content: `🔍 Searching relevant namespace records` } ], isExpanded: false },
+          { id: 's3', title: 'Gather data and formulate instructions', status: 'active', logs: [ { type: 'text', content: 'Building structural representation of data.' }, { type: 'file', content: 'Creating file tmp/analysis.md' } ], isExpanded: true }
+        ]
+      } : m));
+    }, 2800);
+
     try {
-      const response = await fetch('/api/gemini/tutor', {
+      const fetchPromise = fetch('/api/gemini/tutor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -183,16 +333,28 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
         })
       });
 
-      if (!response.ok) {
+      const [, response] = await Promise.all([
+        new Promise(r => setTimeout(r, 4500)), // Force at least 4.5s of thinking simulation
+        fetchPromise.catch(err => {
+          console.warn("fetch failed:", err);
+          return null; // Return null to trigger fallback
+        })
+      ]);
+
+      if (!response || !response.ok) {
         throw new Error('Server returned an error');
       }
 
       const data = await response.json();
-      const replyText = data.reply || data.text || "I apologize, my neural connections are currently refactoring logic blocks. Let us revisit this question momentarily.";
+      let replyText = data.reply || data.text || "I apologize, my neural connections are currently refactoring logic blocks. Let us revisit this question momentarily.";
       
+      // Strip unwanted Markdown symbols
+      replyText = replyText.replace(/###/g, '').replace(/\*\*\*\*/g, '').replace(/\$\$/g, '').replace(/\$/g, '');
+
       setMessages(prev => prev.map(m => m.id === newAiMsgId ? {
         ...m,
-        text: replyText
+        text: replyText,
+        steps: m.steps?.map(s => ({ ...s, status: s.status === 'active' ? 'completed' : s.status, isExpanded: false }))
       } : m));
 
       if (isSpeechEnabled) {
@@ -204,27 +366,26 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
       console.warn("AI Tutor call failed, falling back to simulated logic:", err);
       
       // Smart Fallback simulation reflecting academic tone
-      setTimeout(() => {
-        let simulatedReply = `Accessing your Artemis ${role} dashboard modules now...`;
-        
-        if (textToSend.toLowerCase().includes('syllabus')) {
-          simulatedReply = "Connecting to the Course Builder module. To draft a syllabus for your SS110 section, let us first identify which Foundational Concepts you are targeting for this academic term.";
-        } else if (textToSend.toLowerCase().includes('grade') || textToSend.toLowerCase().includes('feedback')) {
-          simulatedReply = "Navigating to Class Assessments. I can see 14 pending submissions. When grading, remember to align feedback with the specific #breakitdown or #constraints heuristics requested by the rubric.";
-        } else if (textToSend.toLowerCase().includes('prepare')) {
-          simulatedReply = "Pulling up today's Seminar Classroom feed. The previous session ended on a debate about normative claims. For today's session, I recommend brushing up on #correlation methodologies to verify student hypotheses.";
-        }
+      let simulatedReply = `Accessing your Artemis ${role} dashboard modules now...`;
+      
+      if (textToSend.toLowerCase().includes('syllabus')) {
+        simulatedReply = "Connecting to the Course Builder module. To draft a syllabus for your SS110 section, let us first identify which Foundational Concepts you are targeting for this academic term.";
+      } else if (textToSend.toLowerCase().includes('grade') || textToSend.toLowerCase().includes('feedback')) {
+        simulatedReply = "Navigating to Class Assessments. I can see 14 pending submissions. When grading, remember to align feedback with the specific #breakitdown or #constraints heuristics requested by the rubric.";
+      } else if (textToSend.toLowerCase().includes('prepare')) {
+        simulatedReply = "Pulling up today's Seminar Classroom feed. The previous session ended on a debate about normative claims. For today's session, I recommend brushing up on #correlation methodologies to verify student hypotheses.";
+      }
 
-        setMessages(prev => prev.map(m => m.id === newAiMsgId ? {
-          ...m,
-          text: simulatedReply
-        } : m));
-        
-        if (isSpeechEnabled) {
-          speakText(simulatedReply, newAiMsgId);
-        }
-        setIsLoading(false);
-      }, 3000);
+      setMessages(prev => prev.map(m => m.id === newAiMsgId ? {
+        ...m,
+        text: simulatedReply,
+        steps: m.steps?.map(s => ({ ...s, status: s.status === 'active' ? 'completed' : s.status, isExpanded: false }))
+      } : m));
+      
+      if (isSpeechEnabled) {
+        speakText(simulatedReply, newAiMsgId);
+      }
+      setIsLoading(false);
     }
   };
 
@@ -411,6 +572,9 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
                       <button type="button" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition cursor-pointer flex items-center gap-1">
                         <MessageSquare className="w-4 h-4" />
                       </button>
+                    <button type="button" onClick={handleStartVoice} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition cursor-pointer flex items-center gap-1">
+                      <Mic className="w-4 h-4" />
+                    </button>
                   </div>
                   <div className="absolute right-4 bottom-4 flex items-center space-x-2">
                       <button
@@ -490,11 +654,87 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
                           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Knowledge Navigator</span>
                         </div>
                         
+                        {/* Thinking Steps (Manus style) */}
+                        {m.steps && m.steps.length > 0 && (
+                          <div className="flex flex-col mb-2 space-y-0 relative ml-2">
+                             <div className="absolute left-[9px] top-6 bottom-4 w-px bg-slate-200"></div>
+                             {m.steps.map((step, sIdx) => {
+                               const isActive = step.status === 'active';
+                               const isCompleted = step.status === 'completed';
+                               
+                               return (
+                                 <div key={step.id} className="relative z-10 flex flex-col items-start pb-4 last:pb-0">
+                                   <div 
+                                     onClick={() => toggleStep(m.id, step.id)}
+                                     className="flex items-center gap-3 cursor-pointer group"
+                                   >
+                                     <div className="w-5 h-5 shrink-0 bg-white flex items-center justify-center">
+                                       {isCompleted ? (
+                                         <CheckCircle2 className="w-[18px] h-[18px] text-slate-400" />
+                                       ) : isActive ? (
+                                         <Loader2 className="w-[18px] h-[18px] text-indigo-500 animate-spin" />
+                                       ) : (
+                                          <Circle className="w-[18px] h-[18px] text-slate-300" />
+                                       )}
+                                     </div>
+                                     <div className={`text-[15px] font-medium flex items-center gap-2 ${isActive ? 'text-slate-800' : 'text-slate-600 group-hover:text-slate-800'}`}>
+                                       {step.title}
+                                       {step.isExpanded ? (
+                                         <ChevronUp className="w-4 h-4 text-slate-400" />
+                                       ) : (
+                                         <ChevronDown className="w-4 h-4 text-slate-400" />
+                                       )}
+                                     </div>
+                                   </div>
+
+                                   {/* Expanded Details */}
+                                   {step.isExpanded && step.logs && step.logs.length > 0 && (
+                                     <div className="pl-8 pt-2 pb-1 flex flex-col gap-2.5 animate-fade-in w-full max-w-xl">
+                                        {step.logs.map((log, lIdx) => {
+                                           if (log.type === 'text') {
+                                             return <div key={lIdx} className="text-sm text-slate-600 leading-relaxed font-sans">{log.content}</div>;
+                                           } else if (log.type === 'command') {
+                                             return (
+                                               <div key={lIdx} className="inline-flex items-center gap-1.5 self-start bg-slate-100 text-slate-700 px-2.5 py-1.5 rounded-md border border-slate-200">
+                                                  <Terminal className="w-3.5 h-3.5 text-slate-500" />
+                                                  <span className="text-xs font-mono">{log.content}</span>
+                                               </div>
+                                             );
+                                           } else if (log.type === 'search') {
+                                              return (
+                                                <div key={lIdx} className="inline-flex items-center gap-1.5 self-start bg-slate-100 text-slate-700 px-2.5 py-1.5 rounded-md border border-slate-200 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                                                   <span className="text-sm">🔍</span>
+                                                   <span className="text-sm font-sans">{log.content.replace('🔍 ', '')}</span>
+                                                </div>
+                                              );
+                                           } else if (log.type === 'file') {
+                                             return (
+                                               <div key={lIdx} className="inline-flex items-center gap-1.5 self-start bg-slate-100 text-slate-700 px-2.5 py-1.5 rounded-md border border-slate-200">
+                                                  <FilePlus className="w-3 h-3 text-slate-500" />
+                                                  <span className="text-xs font-mono">{log.content}</span>
+                                               </div>
+                                             );
+                                           }
+                                           return null;
+                                        })}
+                                     </div>
+                                   )}
+                                 </div>
+                               );
+                             })}
+                          </div>
+                        )}
+
                         {/* Actual AI Response Text */}
                         {m.text ? (
                           <div className="space-y-4">
-                            <div className="text-[15px] text-slate-800 leading-relaxed font-sans prose prose-slate whitespace-pre-wrap">
-                              {m.text}
+                            <div className="text-[15px] text-slate-800 leading-relaxed font-sans prose prose-slate max-w-none">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm, remarkMath]}
+                                rehypePlugins={[rehypeKatex]}
+                              >
+                                {m.text}
+                              </ReactMarkdown>
                             </div>
                             <div className="flex items-center gap-2 pt-2 border-t border-slate-100/70">
                               <button
@@ -519,12 +759,7 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
                               </button>
                             </div>
                           </div>
-                        ) : (
-                           <div className="flex items-center gap-2 text-slate-500 text-sm italic font-serif">
-                             <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                             Reading context...
-                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -535,8 +770,28 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
                 </div>
               </div>
 
+              {/* ACTIVE WORKING STATUS (Manus style) */}
+              {isLoading && (
+                <div className="w-full flex justify-center px-6 pb-2 bg-gradient-to-t from-[#F9FAFB] to-white/0 relative z-10 -mt-8">
+                   <div className="bg-white border border-slate-200 shadow-[0_4px_20px_rgba(0,0,0,0.06)] px-4 py-3 rounded-2xl flex items-center justify-between w-full max-w-3xl animate-in slide-in-from-bottom-2 fade-in">
+                      <div className="flex items-center gap-3">
+                         <div className="relative flex items-center justify-center w-5 h-5">
+                            <div className="absolute w-2.5 h-2.5 bg-sky-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(14,165,233,0.8)]"></div>
+                         </div>
+                         <div className="text-[15px] font-medium text-slate-700">Knowledge Navigator is working...</div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                         <span className="text-xs text-slate-400 font-sans tracking-tight">Updating plan</span>
+                         <button className="w-6 h-6 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center shadow-sm cursor-pointer transition">
+                            <Square className="w-2.5 h-2.5 fill-current" />
+                         </button>
+                      </div>
+                   </div>
+                </div>
+              )}
+
               {/* INPUT TRAY */}
-              <div className="p-5 shrink-0 flex justify-center bg-[#F9FAFB]">
+              <div className="p-5 pt-3 shrink-0 flex justify-center bg-[#F9FAFB] z-20 relative">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
@@ -554,6 +809,9 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
                   <div className="absolute left-4 top-1/2 -translate-y-1/2">
                     <button type="button" className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition cursor-pointer">
                       <Paperclip className="w-4 h-4" />
+                    </button>
+                    <button type="button" onClick={handleStartVoice} className="ml-1 p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition cursor-pointer">
+                      <Mic className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -576,6 +834,70 @@ export default function AiTutor({ role = 'student', cluster = 'university' }: { 
         </div>
 
       </div>
+
+      {/* JARVIS VOICE OVERLAY */}
+      {isVoiceMode && (
+        <div className="absolute inset-0 z-[100] bg-black flex flex-col items-center animate-in fade-in duration-300">
+           {/* Top Bar Navigation */}
+           <div className="w-full flex justify-between items-center px-4 py-3">
+              <div className="text-white font-mono text-sm tracking-wide">Jarvis AI</div>
+              <div className="flex items-center gap-6">
+                 <div className="flex items-center gap-2 text-white/70 hover:text-white cursor-pointer transition">
+                    <LayoutTemplate className="w-4 h-4 text-[#0ea5e9]" />
+                    <span className="text-sm font-medium">Home</span>
+                 </div>
+                 <div className="flex items-center gap-2 text-white cursor-pointer transition">
+                    <MessageCircle className="w-4 h-4 text-[#0ea5e9] fill-[#0ea5e9]/20" />
+                    <span className="text-sm font-medium border-b border-white pb-0.5">Chat</span>
+                 </div>
+              </div>
+              <div className="flex items-center gap-3">
+                 <button className="text-white hover:bg-white/10 p-1 transition"><Minus className="w-4 h-4" /></button>
+                 <button className="text-white hover:bg-white/10 p-1 transition"><Square className="w-4 h-4" /></button>
+                 <button onClick={() => {
+                        setIsVoiceMode(false); 
+                        setIsRecording(false);
+                        if (recognitionRef.current) {
+                           try { recognitionRef.current.stop(); } catch(e){}
+                        }
+                  }} className="text-rose-500 hover:bg-rose-500/10 p-1 transition"><X className="w-4 h-4" /></button>
+              </div>
+           </div>
+
+           {/* Glowing Orb */}
+           <div className="flex-1 flex flex-col items-center justify-center -mt-10">
+              <div className="relative w-[300px] h-[300px] flex items-center justify-center">
+                 {/* Inner core */}
+                 <div className="absolute w-[80px] h-[80px] bg-white rounded-full blur-[8px] animate-pulse"></div>
+                 <div className="absolute w-[120px] h-[120px] bg-cyan-200 rounded-full blur-[16px] opacity-80 mix-blend-screen"></div>
+                 {/* Mid layers */}
+                 <div className="absolute w-[200px] h-[200px] rounded-full border-[20px] border-cyan-400 blur-[12px] opacity-40 mix-blend-screen animate-[pulse_3s_ease-in-out_infinite]"></div>
+                 <div className="absolute w-[240px] h-[240px] rounded-full bg-cyan-500 blur-[32px] opacity-30 mix-blend-screen animate-[pulse_4s_ease-in-out_infinite]"></div>
+                 {/* Outer aura */}
+                 <div className={`absolute w-[320px] h-[320px] rounded-full bg-blue-600 blur-[64px] opacity-20 mix-blend-screen transition-all duration-700 ${isRecording ? 'scale-110' : 'scale-100'}`}></div>
+                 
+                 {/* Simulated energy ripples (CSS only approach using multiple borders/shadows) */}
+                 <div className={`absolute inset-0 rounded-full border border-cyan-300/30 ${isRecording ? 'animate-ping duration-[3000ms]' : ''}`}></div>
+                 <div className={`absolute inset-4 rounded-full border border-blue-400/20 ${isRecording ? 'animate-ping duration-[2500ms] delay-300' : ''}`}></div>
+              </div>
+              
+              <div className="mt-16 text-white text-center max-w-lg min-h-[40px] text-lg font-light opacity-90 transition-all">
+                 {transcript ? `"${transcript}"` : (
+                    <span className="tracking-widest text-sm uppercase opacity-80">
+                      {isRecording ? "Listening..." : "Available..."}
+                    </span>
+                 )}
+              </div>
+              
+              <button 
+                onClick={() => isRecording ? handleStopVoice() : handleStartVoice()}
+                className={`mt-12 w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 ${isRecording ? 'bg-white/10 text-white shadow-[0_0_20px_rgba(255,255,255,0.2)]' : 'bg-transparent text-white/50 hover:text-white hover:bg-white/5'}`}
+              >
+                  <Mic className="w-8 h-8" />
+              </button>
+           </div>
+        </div>
+      )}
 
     </div>
   );

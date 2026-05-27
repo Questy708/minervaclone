@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useConfirm } from './ConfirmProvider';
 import { 
   FileText, 
   Upload, 
@@ -14,7 +15,8 @@ import {
   Search,
   Filter,
   UserCheck2,
-  Undo
+  Undo,
+  Trash2
 } from 'lucide-react';
 import { UserRole } from '../App';
 
@@ -120,6 +122,15 @@ export default function AssignmentsModule({ role, userInfo }: AssignmentsModuleP
   const [facultyGrade, setFacultyGrade] = useState('A');
   const [facultyComments, setFacultyComments] = useState('');
   const [scores, setScores] = useState<Record<string, number>>({});
+
+  const { confirm } = useConfirm();
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [formTitle, setFormTitle] = useState('');
+  const [formCourse, setFormCourse] = useState('SS110: Cognitive Neuroscience Foundations');
+  const [formDueDate, setFormDueDate] = useState('');
+  const [formDesc, setFormDesc] = useState('');
+  const [formPoints, setFormPoints] = useState(100);
+  const [formTags, setFormTags] = useState('#perception-bias, #modeling');
 
   const selectedAssignment = assignments.find((a) => a.id === selectedId) || assignments[0];
 
@@ -235,6 +246,40 @@ export default function AssignmentsModule({ role, userInfo }: AssignmentsModuleP
     localStorage.removeItem('artemis_assignments');
     setAssignments(PRESET_ASSIGNMENTS);
     setSelectedId(PRESET_ASSIGNMENTS[0].id);
+    setIsCreatingNew(false);
+  };
+
+  const handleCreateAssignment = (e: React.FormEvent) => {
+    e.preventDefault();
+    const tagsArray = formTags.split(',').map(s => s.trim()).filter(s => s.startsWith('#'));
+    const newAssignment: Assignment = {
+      id: `assign-${Date.now()}`,
+      title: formTitle || 'New Synthesis Task',
+      course: formCourse || 'General Curriculum',
+      dueDate: formDueDate || 'End of Week',
+      description: formDesc || 'Evaluate learning outcomes through structured deconstruction.',
+      outcomeTags: tagsArray.length ? tagsArray : ['#breakitdown'],
+      points: formPoints || 100,
+      status: 'pending'
+    };
+    const updated = [newAssignment, ...assignments];
+    handleSaveToLocalStorage(updated);
+    setSelectedId(newAssignment.id);
+    setIsCreatingNew(false);
+  };
+
+  const handleDeleteAssignment = async (id: string) => {
+    const isConfirmed = await confirm({
+      title: 'Delete Assignment',
+      message: 'Are you sure you want to delete this assignment permanently?',
+      confirmText: 'Delete Assignment',
+      cancelText: 'Cancel'
+    });
+    if (isConfirmed) {
+      const updated = assignments.filter(a => a.id !== id);
+      handleSaveToLocalStorage(updated);
+      setSelectedId(updated[0]?.id || '');
+    }
   };
 
   const filtered = assignments.filter((a) => {
@@ -306,6 +351,24 @@ export default function AssignmentsModule({ role, userInfo }: AssignmentsModuleP
                 </button>
               ))}
             </div>
+
+            {(role === 'faculty' || role === 'admin') && (
+              <button
+                onClick={() => {
+                  setIsCreatingNew(true);
+                  setFormTitle('');
+                  setFormDesc('');
+                  setFormDueDate('');
+                  setFormPoints(100);
+                  setFormTags('#perception-bias, #modeling');
+                  setFormCourse('SS110: Cognitive Neuroscience Foundations');
+                }}
+                className="w-full mt-2 py-1.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-900 text-white rounded-lg text-[10px] font-mono font-bold uppercase tracking-widest flex items-center justify-center space-x-1.5 transition active:scale-98 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                <span>Draft Assignment</span>
+              </button>
+            )}
           </div>
 
           {/* Assignments list */}
@@ -325,8 +388,9 @@ export default function AssignmentsModule({ role, userInfo }: AssignmentsModuleP
                       setSelectedId(item.id);
                       setUploadedFile(null);
                       setEssayText('');
+                      setIsCreatingNew(false);
                     }}
-                    className={`w-full p-4 text-left transition relative flex flex-col gap-1 hover:bg-slate-50/50 border-r-2 ${
+                    className={`w-full p-4 text-left transition relative flex flex-col gap-1 group hover:bg-slate-50/50 border-r-2 ${
                       isActive 
                         ? 'bg-indigo-50/40 border-indigo-600' 
                         : 'border-transparent'
@@ -347,9 +411,19 @@ export default function AssignmentsModule({ role, userInfo }: AssignmentsModuleP
                       </span>
                     </div>
 
-                    <h4 className="text-xs font-extrabold text-slate-900 leading-tight">
+                    <h4 className="text-xs font-extrabold text-slate-900 leading-tight pr-5">
                       {item.title}
                     </h4>
+
+                    {(role === 'faculty' || role === 'admin') && (
+                        <Trash2 
+                          onClick={(e) => {
+                             e.stopPropagation();
+                             handleDeleteAssignment(item.id);
+                          }}
+                          className={`w-3.5 h-3.5 text-slate-400 hover:text-rose-600 absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition z-10`} 
+                        />
+                    )}
 
                     <div className="flex items-center gap-1.5 text-slate-500 text-[10px] mt-1">
                       <Clock className="w-3 h-3 text-slate-400" />
@@ -383,8 +457,107 @@ export default function AssignmentsModule({ role, userInfo }: AssignmentsModuleP
         {/* Right pane: Core Workspace */}
         <div className="flex-1 overflow-y-auto bg-slate-50/65 flex flex-col lg:flex-row divide-y lg:divide-y-0 lg:divide-x divide-slate-200" id="assignments-core-workspace">
           
-          {/* Workspace center: Problem sheet & submission console */}
-          <div className="flex-1 p-6 md:p-8 space-y-6">
+          {isCreatingNew ? (
+            <div className="flex-1 p-6 md:p-8 space-y-6">
+              <div className="bg-white rounded-xl border border-slate-200 p-6 md:p-8 shadow-2xs transition duration-200 space-y-6">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <h2 className="text-lg md:text-xl font-extrabold text-slate-900">
+                    Draft New Assignment
+                  </h2>
+                  <button
+                    onClick={() => setIsCreatingNew(false)}
+                    className="px-3.5 py-1.5 border border-slate-250 bg-slate-50 rounded-lg text-xs font-mono font-bold hover:bg-slate-100 transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                
+                <form onSubmit={handleCreateAssignment} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700">Assignment Title *</label>
+                      <input
+                        type="text"
+                        required
+                        value={formTitle}
+                        onChange={(e) => setFormTitle(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-250 rounded-lg p-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="e.g. Sensation vs Perception Essay"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700">Course Identifier *</label>
+                      <input
+                        type="text"
+                        required
+                        value={formCourse}
+                        onChange={(e) => setFormCourse(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-250 rounded-lg p-2.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="e.g. SS110: Neuroscience Foundations"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700">Due Date</label>
+                      <input
+                        type="text"
+                        value={formDueDate}
+                        onChange={(e) => setFormDueDate(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-250 rounded-lg p-2.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="e.g. In 3 Days (May 27, 2026)"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-700">Points</label>
+                      <input
+                        type="number"
+                        value={formPoints}
+                        onChange={(e) => setFormPoints(parseInt(e.target.value) || 0)}
+                        className="w-full bg-slate-50 border border-slate-250 rounded-lg p-2.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Description / Prompt</label>
+                    <textarea
+                      required
+                      value={formDesc}
+                      onChange={(e) => setFormDesc(e.target.value)}
+                      rows={5}
+                      className="w-full bg-slate-50 border border-slate-250 rounded-lg p-3 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans"
+                      placeholder="Detail the prompt, parameters, and requirements..."
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-700">Cornerstone Outcomes (comma-separated tags)</label>
+                    <input
+                      type="text"
+                      value={formTags}
+                      onChange={(e) => setFormTags(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-250 rounded-lg p-2.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      placeholder="#perception-bias, #modeling"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-6 py-2.5 rounded-lg transition"
+                    >
+                      Publish Assignment
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          ) : (
+          <React.Fragment>
+            {/* Workspace center: Problem sheet & submission console */}
+            <div className="flex-1 p-6 md:p-8 space-y-6">
             <div className="bg-white rounded-xl border border-slate-200 p-6 md:p-8 shadow-2xs hover:shadow-xs transition duration-200">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-5">
                 <div>
@@ -670,6 +843,8 @@ export default function AssignmentsModule({ role, userInfo }: AssignmentsModuleP
               </div>
             </div>
           </div>
+          </React.Fragment>
+          )}
 
         </div>
       </div>
